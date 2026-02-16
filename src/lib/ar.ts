@@ -18,6 +18,12 @@ export const ar = {
   knowledge: "المعرفة",
   system: "النظام",
   menu: "القائمة",
+  navMain: "الرئيسية",
+  navTeam: "فريق العمل",
+  navSales: "المبيعات والطلبات",
+  navData: "إدارة البيانات",
+  navContent: "المحتوى والمراجعات",
+  navSystem: "الإعدادات والنظام",
 
   // Mode Switcher
   turboMode: "تحكم سريع",

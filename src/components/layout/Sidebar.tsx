@@ -55,21 +55,20 @@ interface NavGroupConfig {
 
 const navGroups: NavGroupConfig[] = [
   {
-    title: "الرئيسية",
+    title: "navMain",
     items: [
       { title: ar.dashboard, href: "/", icon: LayoutDashboard },
-      { title: ar.agentChat, href: "/agent", icon: Bot },
     ],
   },
   {
-    title: "فريق العمل",
+    title: "navTeam",
     items: [
       { title: ar.team, href: "/team", icon: UsersRound },
       { title: ar.users, href: "/users", icon: Users },
     ],
   },
   {
-    title: "المبيعات والطلبات",
+    title: "navSales",
     items: [
       {
         title: ar.pipelineOrders,
@@ -86,7 +85,7 @@ const navGroups: NavGroupConfig[] = [
     ],
   },
   {
-    title: "إدارة البيانات",
+    title: "navData",
     items: [
       { title: ar.developers, href: "/developers", icon: Building2 },
       { title: ar.properties, href: "/properties", icon: Landmark },
@@ -95,7 +94,7 @@ const navGroups: NavGroupConfig[] = [
     ],
   },
   {
-    title: "المحتوى والمراجعات",
+    title: "navContent",
     items: [
       { title: ar.prompts, href: "/prompts", icon: Sparkles },
       { title: ar.knowledge, href: "/knowledge", icon: BookOpen },
@@ -104,7 +103,7 @@ const navGroups: NavGroupConfig[] = [
     ],
   },
   {
-    title: "الإعدادات والنظام",
+    title: "navSystem",
     items: [
       { title: "تحليلات AI", href: "/analytics/llm", icon: BarChart3 },
       { title: ar.settings, href: "/settings", icon: Cog },
@@ -136,14 +135,17 @@ function NavItem({
       href={item.href}
       onClick={onClick}
       className={cn(
-        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors relative",
+        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-200 relative group/item",
         isActive
-          ? "bg-primary text-primary-foreground"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground",
+          ? "bg-primary text-primary-foreground shadow-md shadow-primary/20 font-medium"
+          : "text-muted-foreground/80 hover:bg-muted hover:text-foreground",
         collapsed && "justify-center px-2",
       )}
     >
-      <Icon className="h-4 w-4 shrink-0" />
+      <Icon className={cn(
+        "h-4 w-4 shrink-0 transition-transform duration-200",
+        !isActive && "group-hover/item:scale-110"
+      )} />
       {!collapsed && <span className="flex-1">{item.title}</span>}
       {item.badge && badgeCount !== undefined && badgeCount > 0 && (
         <span
@@ -189,9 +191,9 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   );
 
   const [expandedGroups, setExpandedGroups] = React.useState<Record<string, boolean>>(() => {
-    if (typeof window === "undefined") return { "الرئيسية": true };
+    if (typeof window === "undefined") return { navMain: true };
     const saved = localStorage.getItem("sidebar_expanded_groups");
-    return saved ? JSON.parse(saved) : { "الرئيسية": true };
+    return saved ? JSON.parse(saved) : { navMain: true };
   });
 
   React.useEffect(() => {
@@ -239,14 +241,14 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                     <button
                       onClick={() => toggleGroup(group.title)}
                       className={cn(
-                        "flex w-full items-center justify-between px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 hover:text-foreground transition-colors group",
+                        "flex w-full items-center justify-between px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 hover:text-foreground transition-colors group/header",
                         hasActiveChild && !isExpanded && "text-primary/70"
                       )}
                     >
-                      <span>{group.title}</span>
+                      <span>{(ar as any)[group.title]}</span>
                       <ChevronRight className={cn(
-                        "h-3 w-3 transition-transform duration-200",
-                        isExpanded && "rotate-90"
+                        "h-3 w-3 transition-transform duration-200 opacity-0 group-hover/header:opacity-100",
+                        isExpanded && "rotate-90 opacity-100"
                       )} />
                     </button>
                   ) : (
