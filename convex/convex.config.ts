@@ -1,0 +1,20 @@
+import { defineApp } from "convex/server";
+import agent from "@convex-dev/agent/convex.config";
+import actionCache from "@convex-dev/action-cache/convex.config";
+import betterAuth from "@convex-dev/better-auth/convex.config";
+import rateLimiter from "@convex-dev/rate-limiter/convex.config";
+import rag from "@convex-dev/rag/convex.config";
+import stagehand from "@browserbasehq/convex-stagehand/convex.config";
+import workflow from "@convex-dev/workflow/convex.config";
+import neutralCost from "neutral-cost/convex.config";
+
+const app: ReturnType<typeof defineApp> = defineApp();
+app.use(agent);
+app.use(actionCache);
+app.use(neutralCost);
+app.use(betterAuth);
+app.use(rateLimiter);
+app.use(rag);
+app.use(stagehand, { name: "stagehand" });
+app.use(workflow);
+export default app;
