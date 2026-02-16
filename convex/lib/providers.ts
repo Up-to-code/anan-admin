@@ -36,7 +36,7 @@ export function getChatModel(): LanguageModel {
  * Returns the embedding model for agents. Uses OpenRouter when LLM_MODE=openrouter
  * (single API key for chat + embeddings); otherwise OpenAI-compatible at baseURL.
  */
-export function getEmbeddingModel(): EmbeddingModel<string> {
+export function getEmbeddingModel(): EmbeddingModel {
   const config = getAgentLLMConfig();
 
   if (config.mode === "openrouter") {
@@ -45,12 +45,12 @@ export function getEmbeddingModel(): EmbeddingModel<string> {
       process.env.OPENROUTER_EMBEDDING_MODEL ?? OPENROUTER_EMBEDDING_MODEL;
     return openrouter.textEmbeddingModel(
       model as `${string}/${string}`
-    ) as unknown as EmbeddingModel<string>;
+    ) as unknown as EmbeddingModel;
   }
 
   // local/server: use OpenAI for embeddings (most custom servers don't support embeddings)
   const openai = createOpenAI({
     apiKey: process.env.OPENAI_API_KEY?.trim() || "dummy",
   });
-  return openai.embedding("text-embedding-3-small") as unknown as EmbeddingModel<string>;
+  return openai.embedding("text-embedding-3-small") as unknown as EmbeddingModel;
 }
