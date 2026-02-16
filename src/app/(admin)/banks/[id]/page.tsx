@@ -55,6 +55,8 @@ import {
 import { cn } from "@/lib/utils";
 import { ar } from "@/lib/ar";
 import { toast } from "sonner";
+import { PageHeader, StatCard } from "@/components/admin/ui";
+import type { LucideIcon } from "lucide-react";
 
 const statusConfig: Record<
   string,
@@ -77,46 +79,6 @@ const statusConfig: Record<
   },
 };
 
-function StatCard({
-  label,
-  value,
-  icon: Icon,
-  color = "blue",
-}: {
-  label: string;
-  value: string | number;
-  icon?: React.ElementType;
-  color?: "blue" | "emerald" | "amber" | "rose" | "violet";
-}) {
-  const colorClasses: Record<string, string> = {
-    blue: "bg-blue-500/10 text-blue-600",
-    emerald: "bg-emerald-500/10 text-emerald-600",
-    amber: "bg-amber-500/10 text-amber-600",
-    rose: "bg-rose-500/10 text-rose-600",
-    violet: "bg-violet-500/10 text-violet-600",
-  };
-
-  return (
-    <Card className="relative overflow-hidden">
-      <div
-        className={cn("absolute top-0 left-0 right-0 h-1", `bg-${color}-500`)}
-      />
-      <CardContent className="pt-5 pb-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground">{label}</p>
-            <p className="text-xl font-bold mt-1">{value}</p>
-          </div>
-          {Icon && (
-            <div className={cn("p-2.5 rounded-xl", colorClasses[color])}>
-              <Icon className="h-4 w-4" />
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 function ProductCard({ product }: { product: any }) {
   const status = statusConfig[product.status] || statusConfig.inactive;
@@ -207,110 +169,66 @@ export default function BankDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink href="/">{ar.dashboard}</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink href="/banks">{ar.banks}</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage className="flex items-center gap-2">
-              <Landmark className="h-4 w-4" />
-              {bank.name}
-            </BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-
-      <Card className="relative overflow-hidden">
-        <div
-          className={cn(
-            "h-1",
-            bank.status === "active"
-              ? "bg-emerald-500"
-              : bank.status === "suspended"
-                ? "bg-rose-500"
-                : "bg-gray-400",
-          )}
-        />
-        <CardContent className="pt-6 pb-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-            <div className="flex items-start gap-4">
-              <div className={cn("p-4 rounded-xl", status.className)}>
-                <Landmark className="h-8 w-8" />
-              </div>
-              <div>
-                <div className="flex items-center gap-3">
-                  <h1 className="text-xl font-bold">{bank.name}</h1>
-                  <Badge
-                    variant="outline"
-                    className={cn("text-[10px]", status.className)}
-                  >
-                    <StatusIcon className="h-3 w-3 ml-1" />
-                    {status.label}
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground font-mono mt-1">
-                  {bank.slug}
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              {bank.website && (
-                <Button variant="outline" asChild>
-                  <a
-                    href={bank.website}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <ExternalLink className="h-4 w-4 ml-2" />
-                    {ar.website}
-                  </a>
-                </Button>
-              )}
-              <Button asChild>
-                <Link href={`/banks/${bank._id}/edit`}>
-                  <Pencil className="h-4 w-4 ml-2" />
-                  {ar.edit}
-                </Link>
+      <PageHeader
+        title={bank.name}
+        description={bank.slug}
+        icon={Landmark as LucideIcon}
+        breadcrumbs={[
+          { label: ar.banks, href: "/banks" },
+          { label: bank.name },
+        ]}
+        action={
+          <div className="flex gap-2">
+            {bank.website && (
+              <Button variant="outline" asChild>
+                <a
+                  href={bank.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ExternalLink className="h-4 w-4 ml-2" />
+                  {ar.website}
+                </a>
               </Button>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="destructive">
-                    <Trash2 className="h-4 w-4 ml-2" />
+            )}
+            <Button asChild>
+              <Link href={`/banks/${bank._id}/edit`}>
+                <Pencil className="h-4 w-4 ml-2" />
+                {ar.edit}
+              </Link>
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive">
+                  <Trash2 className="h-4 w-4 ml-2" />
+                  {ar.delete}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-amber-500" />
+                    {ar.deleteBankConfirm}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    هذا الإجراء لا يمكن التراجع عنه. سيتم حذف جميع المنتجات
+                    المرتبطة.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{ar.cancel}</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={onDelete}
+                    className="bg-rose-600 hover:bg-rose-700"
+                  >
                     {ar.delete}
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle className="flex items-center gap-2">
-                      <AlertTriangle className="h-5 w-5 text-amber-500" />
-                      {ar.deleteBankConfirm}
-                    </AlertDialogTitle>
-                    <AlertDialogDescription>
-                      هذا الإجراء لا يمكن التراجع عنه. سيتم حذف جميع المنتجات
-                      المرتبطة.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>{ar.cancel}</AlertDialogCancel>
-                    <AlertDialogAction
-                      onClick={onDelete}
-                      className="bg-rose-600 hover:bg-rose-700"
-                    >
-                      {ar.delete}
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </div>
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
-        </CardContent>
-      </Card>
+        }
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
@@ -328,7 +246,7 @@ export default function BankDetailPage() {
         <StatCard
           label={ar.status}
           value={status.label}
-          icon={StatusIcon}
+          icon={StatusIcon as LucideIcon}
           color={
             bank.status === "active"
               ? "emerald"

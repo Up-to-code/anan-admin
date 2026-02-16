@@ -6,7 +6,7 @@ import type { FunctionReference } from "convex/server";
 export type AgentToolsApi = {
   properties: {
     search: FunctionReference<"query", "public">;
-    getRecentSearchCount: FunctionReference<"query", "public">;
+    getRecentSearchCount: FunctionReference<"query", "public" | "internal">;
     logSearchEvent: FunctionReference<"mutation", "public">;
     logKnowledgeResearch: FunctionReference<"mutation", "public">;
     getLastSearchContext: FunctionReference<"query", "public">;
@@ -20,16 +20,16 @@ export type AgentToolsApi = {
   };
   partners: { list: FunctionReference<"query", "public"> };
   userProfiles: {
-    getByUserId: FunctionReference<"query", "public">;
-    getRecentMessageCount: FunctionReference<"query", "public">;
-    upsert: FunctionReference<"mutation", "public">;
+    getByUserId: FunctionReference<"query", "public" | "internal">;
+    getRecentMessageCount: FunctionReference<"query", "public" | "internal">;
+    upsert: FunctionReference<"mutation", "public" | "internal">;
   };
   knowledgePages: {
     getBySlug: FunctionReference<"query", "public">;
     list: FunctionReference<"query", "public">;
   };
   handoffs: {
-    create: FunctionReference<"mutation", "public">;
+    create: FunctionReference<"mutation", "public" | "internal">;
   };
   orders: {
     createDraftFromAgent: FunctionReference<"mutation", "public">;

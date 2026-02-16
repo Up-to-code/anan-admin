@@ -7,6 +7,9 @@ import {
   AlertCircle,
   CheckCircle,
 } from "lucide-react";
+import { ar } from "@/lib/ar";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 
 interface SearchTraceSource {
   url: string;
@@ -32,61 +35,63 @@ interface SearchTracePanelProps {
 
 export function SearchTracePanel({ trace }: SearchTracePanelProps) {
   return (
-    <div className="search-trace-panel">
-      <div className="search-trace-header">
-        <h3 className="search-trace-title">Search Trace</h3>
-        <div className="search-trace-meta">
-          <span className="search-trace-query">"{trace.query}"</span>
-          <span className="search-trace-duration">
+    <div className="border border-border rounded-lg bg-card text-card-foreground shadow-sm">
+      <div className="flex items-center justify-between p-3 border-b border-border bg-muted/50">
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-sm">{ar.searchSources}</h3>
+          <span className="text-xs text-muted-foreground bg-background px-2 py-0.5 rounded-full border border-border">"{trace.query}"</span>
+        </div>
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1">
             <Clock size={12} />
             {(trace.totalDuration / 1000).toFixed(1)}s
           </span>
+          {trace.cachedFrom && (
+            <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
+              <CheckCircle size={12} />
+              <span>{ar.cachedFrom} {trace.cachedFrom}</span>
+            </div>
+          )}
         </div>
-        {trace.cachedFrom && (
-          <div className="search-trace-cached">
-            <CheckCircle size={12} className="text-green-500" />
-            <span>Cached from {trace.cachedFrom}</span>
-          </div>
-        )}
       </div>
 
-      <div className="search-trace-sources">
+      <div className="divide-y divide-border">
         {trace.sources.map((source, idx) => (
-          <div key={idx} className="search-trace-source">
-            <div className="source-header">
-              <span className="source-number">{idx + 1}</span>
-              <a
-                href={source.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="source-url"
-              >
-                {source.title || truncateUrl(source.url)}
-                <ExternalLink size={10} />
-              </a>
-              <span className={`source-status status-${source.status}`}>
-                {source.status === "success" && <CheckCircle size={12} />}
-                {source.status === "partial" && <AlertCircle size={12} />}
-                {source.status === "failed" && (
-                  <AlertCircle size={12} className="text-red-500" />
-                )}
-              </span>
+          <div key={idx} className="p-3 text-sm hover:bg-muted/30 transition-colors">
+            <div className="flex items-start justify-between gap-3 mb-1">
+              <div className="flex items-start gap-2 min-w-0">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground shrink-0 mt-0.5">{idx + 1}</span>
+                <a
+                  href={source.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-primary hover:underline truncate block"
+                >
+                  {source.title || truncateUrl(source.url)}
+                  <ExternalLink size={10} className="inline-block mr-1 opacity-50" />
+                </a>
+              </div>
+              <div className="shrink-0">
+                {source.status === "success" && <CheckCircle size={14} className="text-green-500" />}
+                {source.status === "partial" && <AlertCircle size={14} className="text-yellow-500" />}
+                {source.status === "failed" && <AlertCircle size={14} className="text-red-500" />}
+              </div>
             </div>
 
-            <div className="source-stats">
+            <div className="flex items-center gap-3 text-xs text-muted-foreground pr-7">
               {source.duration && (
-                <span className="source-stat">
+                <span className="flex items-center gap-1">
                   <Clock size={10} />
                   {(source.duration / 1000).toFixed(1)}s
                 </span>
               )}
               {source.cardsExtracted !== undefined && (
-                <span className="source-stat">
+                <span className="flex items-center gap-1">
                   📋 {source.cardsExtracted} cards
                 </span>
               )}
               {source.imagesFound !== undefined && source.imagesFound > 0 && (
-                <span className="source-stat">
+                <span className="flex items-center gap-1">
                   <Image size={10} />
                   {source.imagesFound} images
                 </span>
@@ -94,7 +99,7 @@ export function SearchTracePanel({ trace }: SearchTracePanelProps) {
             </div>
 
             {source.error && (
-              <div className="source-error">
+              <div className="mt-2 text-xs text-destructive flex items-center gap-1 pr-7">
                 <AlertCircle size={12} />
                 {source.error}
               </div>
@@ -103,10 +108,10 @@ export function SearchTracePanel({ trace }: SearchTracePanelProps) {
         ))}
       </div>
 
-      <div className="search-trace-footer">
-        <span className="total-results">
-          {trace.totalResults} results found
-        </span>
+      <div className="p-2 border-t border-border bg-muted/20 text-xs text-muted-foreground text-center">
+        <span className="font-medium text-foreground">
+          {trace.totalResults}
+        </span> {ar.resultsFound}
       </div>
     </div>
   );

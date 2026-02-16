@@ -11,6 +11,4 @@ export {
   listUsersWithThreads,
   searchThreads,
   deleteThread,
-  testAgent,
-  testAgentMultiTurn,
 } from "../../agents/actions";

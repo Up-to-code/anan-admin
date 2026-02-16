@@ -5,14 +5,6 @@ import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "convex/_generated/api";
 import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
-import {
   Card,
   CardContent,
   CardHeader,
@@ -52,6 +44,7 @@ import {
 import { ar } from "@/lib/ar";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { StatCard, PageHeader } from "@/components/admin/ui";
 
 // ============================================
 // ALL HOOKS MUST BE DEFINED AT THE TOP LEVEL
@@ -64,7 +57,7 @@ const defaultPrompts = [
     label: "الموجه الرئيسي",
     description: "الموجه الأساسي للوكيل",
   },
-  { key: "real_estate", label: "العقارات", description: "موجه البحث العقاري" },
+  { key: "realEstate", label: "العقارات", description: "موجه البحث العقاري" },
   { key: "tools", label: "الأدوات", description: "وصف الأدوات المتاحة" },
 ];
 
@@ -98,53 +91,6 @@ const modelOptions = [
     tier: "fast",
   },
 ];
-
-function StatCard({
-  label,
-  value,
-  icon: Icon,
-  color = "blue",
-  description,
-}: {
-  label: string;
-  value: string | number;
-  icon?: React.ElementType;
-  color?: "blue" | "emerald" | "amber" | "violet";
-  description?: string;
-}) {
-  const colorClasses: Record<string, string> = {
-    blue: "bg-blue-500/10 text-blue-600",
-    emerald: "bg-emerald-500/10 text-emerald-600",
-    amber: "bg-amber-500/10 text-amber-600",
-    violet: "bg-violet-500/10 text-violet-600",
-  };
-
-  return (
-    <Card className="relative overflow-hidden">
-      <div
-        className={cn("absolute top-0 left-0 right-0 h-1", `bg-${color}-500`)}
-      />
-      <CardContent className="pt-5 pb-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground">{label}</p>
-            <p className="text-xl font-bold mt-1">{value}</p>
-            {description && (
-              <p className="text-xs text-muted-foreground mt-1">
-                {description}
-              </p>
-            )}
-          </div>
-          {Icon && (
-            <div className={cn("p-2.5 rounded-xl", colorClasses[color])}>
-              <Icon className="h-4 w-4" />
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 function formatTokens(n: number | undefined): string {
   if (n === undefined || n === null) return "٠";
@@ -212,7 +158,7 @@ export default function SettingsPage() {
     fetch("https://openrouter.ai/api/v1/models")
       .then((r) => r.json())
       .then((d) => setOpenRouterPricing(d.data || []))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // ============================================
@@ -311,29 +257,12 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink href="/">{ar.dashboard}</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage className="flex items-center gap-2">
-              <Settings2 className="h-4 w-4" />
-              {ar.settings}
-            </BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold">{ar.settings}</h1>
-          <p className="text-sm text-muted-foreground">
-            إعدادات الذكاء الاصطناعي والنماذج النصية
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title={ar.settings}
+        description="إعدادات الذكاء الاصطناعي والنماذج النصية"
+        icon={Settings2}
+        breadcrumbs={[{ label: ar.settings }]}
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard

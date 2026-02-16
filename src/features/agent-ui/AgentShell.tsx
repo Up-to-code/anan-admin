@@ -1,13 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { PanelRightOpen, Sidebar, X } from "lucide-react";
+import { Bot, PanelRightOpen, PenSquare, Sidebar, X } from "lucide-react";
 import type { Id } from "convex/_generated/dataModel";
 import type { AgentMessage, AgentThread, PendingAction } from "./types";
 import { ConversationRail } from "./ConversationRail";
 import { ChatCanvas } from "./ChatCanvas";
 import { PendingActionPanel } from "./PendingActionPanel";
-import "./agent-ui.css";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 export function AgentShell({
   threads,
@@ -73,110 +75,147 @@ export function AgentShell({
     [pendingActions]
   );
 
-  return (
-    <div className="agent-root" dir="rtl">
-      <div className="agent-shell">
-        <aside className="agent-rail agent-desktop-only">
-          <ConversationRail
-            threads={threads}
-            activeThreadId={activeThreadId}
-            isLoading={isThreadsLoading}
-            isBusy={isBusy}
-            deletingThreadId={deletingThreadId}
-            onNewThread={onNewThread}
-            onSelectThread={onSelectThread}
-            onDeleteThread={onDeleteThread}
-            onRenameThread={onRenameThread}
-          />
-        </aside>
+  const railContent = (
+    <div className="flex flex-col h-full min-h-0 bg-transparent">
+      <div className="flex shrink-0 items-center gap-2 p-4">
+        <div className="w-8 h-8 rounded-lg bg-accent/50 flex items-center justify-center text-foreground/80">
+          <Bot size={18} />
+        </div>
+        <span className="font-semibold text-sm">وكيل ANAN</span>
+      </div>
+      <div className="flex-1 min-h-0 overflow-hidden">
+      <ConversationRail
+        threads={threads}
+        activeThreadId={activeThreadId}
+        isLoading={isThreadsLoading}
+        isBusy={isBusy}
+        deletingThreadId={deletingThreadId}
+        onNewThread={onNewThread}
+        onSelectThread={onSelectThread}
+        onDeleteThread={onDeleteThread}
+        onRenameThread={onRenameThread}
+      />
+      </div>
+    </div>
+  );
 
-        <section className="agent-main">
-          <div className="agent-topbar" style={{ borderBottom: "1px solid hsl(var(--border))" }}>
-            <div className="agent-topbar-left">
-              <button className="agent-btn icon ghost agent-mobile-only" onClick={() => setRailOpen(true)}>
-                <Sidebar size={16} />
-              </button>
-              <div>
-                <div className="agent-title">وكيل ANAN</div>
-                <div className="agent-subtitle">
-                  {sortedPending.length > 0
-                    ? `${sortedPending.length} إجراءات معلقة`
-                    : "مساحة المحادثة"}
-                </div>
+  const actionsContent = (
+    <div className="flex flex-1 flex-col min-h-0 overflow-hidden bg-background border-l border-border">
+      <div className="flex shrink-0 items-center justify-between p-4 border-b border-border">
+        <h3 className="font-semibold text-sm">الإجراءات المعلقة</h3>
+        <Button variant="ghost" size="icon" onClick={() => setActionsOpen(false)}>
+          <X size={16} />
+        </Button>
+      </div>
+      <div className="flex-1 min-h-0 overflow-hidden">
+      <PendingActionPanel
+        actions={sortedPending}
+        updatePayload={onUpdatePendingPayload}
+        confirmAction={onConfirmPendingAction}
+        rewriteText={onRewriteText}
+        cancelAction={onCancelPendingAction}
+        generateUploadUrl={onGenerateUploadUrl}
+        attachMedia={onAttachPendingMedia}
+        removeMedia={onRemovePendingMedia}
+        reorderMedia={onReorderPendingMedia}
+      />
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="h-screen text-foreground relative flex overflow-hidden bg-background" dir="rtl">
+      {/* Mobile/Tablet Sidebar Overlay */}
+      {railOpen && (
+        <div className="absolute inset-0 z-50 md:hidden">
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setRailOpen(false)} />
+          <div className="absolute inset-y-0 right-0 w-3/4 max-w-xs bg-sidebar-background shadow-2xl border-l border-border animate-in slide-in-from-right">
+            {railContent}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute top-2 left-2 text-muted-foreground hover:text-foreground"
+              onClick={() => setRailOpen(false)}
+            >
+              <X size={16} />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Desktop Sidebar - Strictly Dark Mode style (Hybrid Layout) */}
+      <aside className="hidden md:flex w-[260px] flex-col border-l border-white/10 bg-black text-white">
+        {railContent}
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col min-h-0 min-w-0 bg-transparent relative">
+        {/* Topbar */}
+        <div className="h-14 flex items-center justify-between px-4 bg-transparent z-10 transition-colors duration-200">
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" className="md:hidden text-muted-foreground hover:text-foreground hover:bg-accent" onClick={() => setRailOpen(true)}>
+              <Sidebar size={18} />
+            </Button>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-foreground md:hidden">
+                <Bot size={18} />
+              </div>
+              <div className="flex flex-col">
+                <span className="font-semibold text-sm md:hidden">وكيل ANAN</span>
+                <span className="text-xs text-muted-foreground">
+                  {sortedPending.length > 0 ? `${sortedPending.length} إجراءات معلقة` : "مساحة المحادثة"}
+                </span>
               </div>
             </div>
-            <div className="agent-inline-row">
-              <button className="agent-btn icon ghost" onClick={() => setActionsOpen(true)}>
-                <PanelRightOpen size={16} />
-              </button>
-              <button className="agent-btn ghost" onClick={onNewThread} disabled={isBusy}>
-                محادثة جديدة
-              </button>
-            </div>
           </div>
 
-          <ChatCanvas
-            messages={messages}
-            isThinking={isThinking}
-            isSending={isSending}
-            onSend={onSendMessage}
-            onSlashCommand={onSlashCommand}
-            bottomRef={bottomRef}
-          />
-        </section>
-
-      </div>
-
-      {railOpen ? (
-        <>
-          <div className="agent-drawer-overlay" onClick={() => setRailOpen(false)} />
-          <div className="agent-drawer-panel">
-            <div className="agent-topbar">
-              <div className="agent-title">المحادثات</div>
-              <button className="agent-btn icon ghost" onClick={() => setRailOpen(false)}>
-                <X size={15} />
-              </button>
-            </div>
-            <ConversationRail
-              threads={threads}
-              activeThreadId={activeThreadId}
-              isLoading={isThreadsLoading}
-              isBusy={isBusy}
-              deletingThreadId={deletingThreadId}
-              onNewThread={onNewThread}
-              onSelectThread={onSelectThread}
-              onDeleteThread={onDeleteThread}
-              onRenameThread={onRenameThread}
-              onThreadChosen={() => setRailOpen(false)}
-            />
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-2 relative h-9 text-muted-foreground hover:text-foreground hover:bg-accent"
+              onClick={() => setActionsOpen(true)}
+            >
+              <PanelRightOpen size={16} />
+              {sortedPending.length > 0 && (
+                <Badge variant="destructive" className="h-5 min-w-[20px] px-1 flex items-center justify-center rounded-full text-[10px]">
+                  {sortedPending.length}
+                </Badge>
+              )}
+            </Button>
+            <Button
+              size="sm"
+              onClick={onNewThread}
+              disabled={isBusy}
+              className="gap-2 h-9 border-0"
+            >
+              <PenSquare size={16} />
+              <span className="hidden sm:inline">محادثة جديدة</span>
+            </Button>
           </div>
-        </>
-      ) : null}
+        </div>
 
-      {actionsOpen ? (
-        <>
-          <div className="agent-drawer-overlay" onClick={() => setActionsOpen(false)} />
-          <div className="agent-drawer-panel">
-            <div className="agent-topbar">
-              <div className="agent-title">الإجراءات المعلقة</div>
-              <button className="agent-btn icon ghost" onClick={() => setActionsOpen(false)}>
-                <X size={15} />
-              </button>
-            </div>
-            <PendingActionPanel
-              actions={sortedPending}
-              updatePayload={onUpdatePendingPayload}
-              confirmAction={onConfirmPendingAction}
-              rewriteText={onRewriteText}
-              cancelAction={onCancelPendingAction}
-              generateUploadUrl={onGenerateUploadUrl}
-              attachMedia={onAttachPendingMedia}
-              removeMedia={onRemovePendingMedia}
-              reorderMedia={onReorderPendingMedia}
-            />
+        {/* Chat Area */}
+        <ChatCanvas
+          messages={messages}
+          isThinking={isThinking}
+          isSending={isSending}
+          onSend={onSendMessage}
+          onSlashCommand={onSlashCommand}
+          onOpenPendingActions={() => setActionsOpen(true)}
+          bottomRef={bottomRef}
+        />
+      </main>
+
+      {/* Actions Panel (Drawer) */}
+      {actionsOpen && (
+        <div className="absolute inset-0 z-50">
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setActionsOpen(false)} />
+          <div className="absolute inset-y-0 left-0 w-full max-w-md bg-background shadow-2xl border-r border-border animate-in slide-in-from-left flex flex-col min-h-0">
+            {actionsContent}
           </div>
-        </>
-      ) : null}
+        </div>
+      )}
     </div>
   );
 }

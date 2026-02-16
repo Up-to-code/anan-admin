@@ -1,6 +1,7 @@
 "use client";
 
 import type { AssistantPayload } from "./types";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 function SummaryCard({
   payload,
@@ -8,16 +9,18 @@ function SummaryCard({
   payload: Extract<AssistantPayload, { type: "summary_block" }>;
 }) {
   return (
-    <div className="agent-card">
-      <div className="agent-card-title">{payload.title}</div>
-      <div className="agent-card-body">
+    <Card className="w-full bg-[#FAFAFA] dark:bg-[#18181B] border-zinc-200 dark:border-zinc-800">
+      <CardHeader>
+        <CardTitle className="text-zinc-900 dark:text-zinc-50">{payload.title}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
         <p>{payload.summary}</p>
         {payload.count !== undefined ? (
-          <p className="agent-card-subtle">Count: {payload.count}</p>
+          <p className="text-sm text-muted-foreground">Count: {payload.count}</p>
         ) : null}
-        {payload.cta ? <p className="agent-card-subtle">{payload.cta}</p> : null}
-      </div>
-    </div>
+        {payload.cta ? <p className="text-sm text-muted-foreground">{payload.cta}</p> : null}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -27,17 +30,19 @@ function PropertyCard({
   payload: Extract<AssistantPayload, { type: "recommendation_property" }>;
 }) {
   return (
-    <div className="agent-card">
-      <div className="agent-card-title">{payload.title}</div>
-      <div className="agent-card-body">
+    <Card className="w-full bg-[#FAFAFA] dark:bg-[#18181B] border-zinc-200 dark:border-zinc-800">
+      <CardHeader>
+        <CardTitle className="text-zinc-900 dark:text-zinc-50">{payload.title}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
         {payload.address ? <p>{payload.address}</p> : null}
         {payload.price !== undefined ? (
-          <p className="agent-card-subtle">Price: {payload.price.toLocaleString()}</p>
+          <p className="text-sm text-muted-foreground">Price: {payload.price.toLocaleString()}</p>
         ) : null}
-        {payload.status ? <p className="agent-card-subtle">Status: {payload.status}</p> : null}
+        {payload.status ? <p className="text-sm text-muted-foreground">Status: {payload.status}</p> : null}
         {payload.description ? <p>{payload.description}</p> : null}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -47,14 +52,16 @@ function BankCard({
   payload: Extract<AssistantPayload, { type: "recommendation_bank" }>;
 }) {
   return (
-    <div className="agent-card">
-      <div className="agent-card-title">{payload.name}</div>
-      <div className="agent-card-body">
+    <Card className="w-full bg-[#FAFAFA] dark:bg-[#18181B] border-zinc-200 dark:border-zinc-800">
+      <CardHeader>
+        <CardTitle className="text-zinc-900 dark:text-zinc-50">{payload.name}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
         {payload.product ? <p>{payload.product}</p> : null}
-        {payload.status ? <p className="agent-card-subtle">Status: {payload.status}</p> : null}
+        {payload.status ? <p className="text-sm text-muted-foreground">Status: {payload.status}</p> : null}
         {payload.description ? <p>{payload.description}</p> : null}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -64,14 +71,16 @@ function DeveloperCard({
   payload: Extract<AssistantPayload, { type: "recommendation_developer" }>;
 }) {
   return (
-    <div className="agent-card">
-      <div className="agent-card-title">{payload.name}</div>
-      <div className="agent-card-body">
-        {payload.slug ? <p className="agent-card-subtle">{payload.slug}</p> : null}
-        {payload.status ? <p className="agent-card-subtle">Status: {payload.status}</p> : null}
+    <Card className="w-full bg-[#FAFAFA] dark:bg-[#18181B] border-zinc-200 dark:border-zinc-800">
+      <CardHeader>
+        <CardTitle className="text-zinc-900 dark:text-zinc-50">{payload.name}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {payload.slug ? <p className="text-sm text-muted-foreground">{payload.slug}</p> : null}
+        {payload.status ? <p className="text-sm text-muted-foreground">Status: {payload.status}</p> : null}
         {payload.description ? <p>{payload.description}</p> : null}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -81,13 +90,15 @@ function ActionStateCard({
   payload: Extract<AssistantPayload, { type: "action_state" }>;
 }) {
   return (
-    <div className="agent-card">
-      <div className="agent-card-title">{payload.title}</div>
-      <div className="agent-card-body">
-        <p className="agent-card-subtle">State: {payload.state}</p>
+    <Card className="w-full bg-[#FAFAFA] dark:bg-[#18181B] border-zinc-200 dark:border-zinc-800">
+      <CardHeader>
+        <CardTitle className="text-zinc-900 dark:text-zinc-50">{payload.title}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <p className="text-sm text-muted-foreground">State: {payload.state}</p>
         {payload.details ? <p>{payload.details}</p> : null}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 

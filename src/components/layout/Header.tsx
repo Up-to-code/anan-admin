@@ -40,15 +40,16 @@ import { api } from "convex/_generated/api";
 import { cn } from "@/lib/utils";
 
 function NotificationBell() {
+  const isAdmin = useQuery(api.features.admin.api.isAdmin);
   const unreadCount = useQuery(
     api.features.admin.api.notificationsUnreadCount,
-    {},
+    isAdmin === true ? {} : "skip",
   );
   const notificationsResult = useQuery(
     api.features.admin.api.notificationsList,
-    {
-      paginationOpts: { numItems: 10, cursor: null },
-    },
+    isAdmin === true
+      ? { paginationOpts: { numItems: 10, cursor: null } }
+      : "skip",
   );
   const acknowledge = useMutation(
     api.features.admin.api.notificationAcknowledge,

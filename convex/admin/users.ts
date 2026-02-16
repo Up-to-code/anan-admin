@@ -327,9 +327,7 @@ export const listTeamMembers = query({
     }> = [];
 
     // 1. userRoles where role === "admin" -> resolve phone -> verifiedPhones -> userId -> userProfiles
-    const adminRoles = await ctx.db
-      .query("userRoles")
-      .collect();
+    const adminRoles = await ctx.db.query("userRoles").collect();
     const adminPhones = new Set(
       adminRoles.filter((r) => r.role === "admin").map((r) => r.phoneNumber),
     );

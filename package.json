@@ -42,6 +42,7 @@
     "@radix-ui/react-switch": "latest",
     "@radix-ui/react-tabs": "latest",
     "@radix-ui/react-tooltip": "latest",
+    "@tailwindcss/typography": "^0.5.19",
     "@toon-format/toon": "^2.1.0",
     "ai": "^6.0.86",
     "better-auth": "^1.4.9",
@@ -55,7 +56,10 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-hook-form": "latest",
+    "react-markdown": "^10.1.0",
     "recharts": "^3.7.0",
+    "rehype-raw": "^7.0.0",
+    "remark-gfm": "^4.0.1",
     "sonner": "latest",
     "tailwind-merge": "latest",
     "zod": "latest"

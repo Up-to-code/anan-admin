@@ -47,6 +47,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PageHeader, StatCard } from "@/components/admin/ui";
 
 function formatNumber(n: number | undefined): string {
   if (n === undefined || n === null) return "٠";
@@ -393,51 +394,27 @@ export default function UserDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem><BreadcrumbLink href="/">{ar.dashboard}</BreadcrumbLink></BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem><BreadcrumbLink href="/users">{ar.users}</BreadcrumbLink></BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem><BreadcrumbPage>{user.name || ar.unnamed}</BreadcrumbPage></BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-
-      <Card className="relative overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-1 bg-primary" />
-        <CardContent className="pt-8 pb-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-            <div className="flex items-center gap-5">
-              <Avatar className="h-16 w-16 ring-4 ring-muted">
-                <AvatarFallback className="text-2xl">{user.name?.charAt(0) || "ع"}</AvatarFallback>
-              </Avatar>
-              <div>
-                <div className="flex items-center gap-3">
-                  <h1 className="text-xl font-bold">{user.name || ar.unnamed}</h1>
-                  <Badge className={cn("text-[10px]", user.role === "admin" ? "bg-primary/10 text-primary" : "bg-muted")}>
-                    {user.role === "admin" ? ar.admin : ar.user}
-                  </Badge>
-                  {user.verified && <CheckCircle className="h-4 w-4 text-emerald-500" />}
-                </div>
-                <div className="flex flex-wrap items-center gap-4 mt-2 text-muted-foreground">
-                  {user.email && <div className="flex items-center gap-1.5 text-sm"><Mail className="h-4 w-4" /><span>{user.email}</span></div>}
-                  {user.phone && <div className="flex items-center gap-1.5 text-sm" dir="ltr"><Phone className="h-4 w-4" /><span>{user.phone}</span></div>}
-                </div>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={onGenerateSummary} disabled={summaryLoading}>
-                {summaryLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                ملخص AI
-              </Button>
-              <Button variant="outline" onClick={() => onRoleChange(user.role === "admin" ? "user" : "admin")}>
-                <UserCog className="h-4 w-4" />
-                تغيير الدور
-              </Button>
-            </div>
+      <PageHeader
+        title={user.name || ar.unnamed}
+        description={user.phone || user.email || "-"}
+        icon={User}
+        breadcrumbs={[
+          { label: ar.users, href: "/users" },
+          { label: user.name || ar.unnamed },
+        ]}
+        action={
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onGenerateSummary} disabled={summaryLoading}>
+              {summaryLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              ملخص AI
+            </Button>
+            <Button variant="outline" onClick={() => onRoleChange(user.role === "admin" ? "user" : "admin")}>
+              <UserCog className="h-4 w-4" />
+              تغيير الدور
+            </Button>
           </div>
-        </CardContent>
-      </Card>
+        }
+      />
 
       {summary && (
         <Card className="border-amber-500/30 bg-amber-500/5">
@@ -452,25 +429,36 @@ export default function UserDetailPage() {
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        {[{ k: "orders", v: counts.orders || 0, icon: ShoppingCart, c: "blue" },
-          { k: "threads", v: counts.threads || 0, icon: MessageSquare, c: "violet" },
-          { k: "search", v: counts.searchLogs || 0, icon: Search, c: "emerald" },
-          { k: "knowledge", v: counts.knowledgeResearch || 0, icon: Database, c: "cyan" },
-          { k: "favorites", v: counts.favorites || 0, icon: Heart, c: "rose" },
-        ].map((s) => (
-          <Card key={s.k} className="relative overflow-hidden">
-            <div className={cn("absolute top-0 left-0 right-0 h-1", `bg-${s.c}-500`)} />
-            <CardContent className="pt-5 pb-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground">{s.k === "threads" ? "محادثات" : s.k === "knowledge" ? "بحث معرفة" : s.k}</p>
-                  <p className="text-xl font-bold">{s.v}</p>
-                </div>
-                <div className={cn("p-2.5 rounded-xl", `bg-${s.c}-500/10 text-${s.c}-600`)}><s.icon className="h-4 w-4" /></div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+        <StatCard
+          label={ar.orders}
+          value={counts.orders || 0}
+          icon={ShoppingCart}
+          color="blue"
+        />
+        <StatCard
+          label="محادثات"
+          value={counts.threads || 0}
+          icon={MessageSquare}
+          color="violet"
+        />
+        <StatCard
+          label="سجل البحث"
+          value={counts.searchLogs || 0}
+          icon={Search}
+          color="emerald"
+        />
+        <StatCard
+          label="بحث المعرفة"
+          value={counts.knowledgeResearch || 0}
+          icon={Database}
+          color="blue"
+        />
+        <StatCard
+          label={ar.favorites}
+          value={counts.favorites || 0}
+          icon={Heart}
+          color="rose"
+        />
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>

@@ -8,30 +8,11 @@ import { ar } from "@/lib/ar";
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Search,
   Plus,
   Landmark,
   Package,
@@ -46,12 +27,9 @@ import {
   Pause,
   Edit,
   Globe,
-  CreditCard,
   Home,
   Percent,
-  Calendar,
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -65,105 +43,46 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-
-function StatCard({
-  label,
-  value,
-  icon: Icon,
-  color = "blue",
-}: {
-  label: string;
-  value: string | number;
-  icon?: React.ElementType;
-  color?: "blue" | "emerald" | "amber" | "rose" | "violet";
-}) {
-  const colorClasses: Record<string, string> = {
-    blue: "bg-blue-500/10 text-blue-600",
-    emerald: "bg-emerald-500/10 text-emerald-600",
-    amber: "bg-amber-500/10 text-amber-600",
-    rose: "bg-rose-500/10 text-rose-600",
-    violet: "bg-violet-500/10 text-violet-600",
-  };
-
-  return (
-    <Card className="relative overflow-hidden">
-      <div
-        className={cn("absolute top-0 left-0 right-0 h-1", `bg-${color}-500`)}
-      />
-      <CardContent className="pt-5 pb-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground">{label}</p>
-            <p className="text-2xl font-bold mt-1">{value}</p>
-          </div>
-          {Icon && (
-            <div className={cn("p-2.5 rounded-xl", colorClasses[color])}>
-              <Icon className="h-4 w-4" />
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-const productTypeConfig: Record<
-  string,
-  { label: string; icon: React.ElementType; color: string }
-> = {
-  mortgage: { label: "تمويل عقاري", icon: Home, color: "blue" },
-  personal_loan: { label: "قرض شخصي", icon: CreditCard, color: "violet" },
-  auto_loan: { label: "تمويل سيارة", icon: Package, color: "emerald" },
-  construction: { label: "تمويل بناء", icon: Landmark, color: "amber" },
-  default: { label: "منتج", icon: Package, color: "gray" },
-};
+import { PageHeader, StatCard, EmptyState, SearchInput } from "@/components/admin/ui";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 function ProductRow({ product }: { product: any }) {
-  const type = productTypeConfig[product.type] || productTypeConfig.default;
-  const TypeIcon = type.icon;
-
   return (
-    <div className="flex items-center gap-3 py-3 px-2 hover:bg-muted/50 rounded-lg transition-colors">
-      <div className={cn("p-2 rounded-lg shrink-0", `bg-${type.color}-500/10`)}>
-        <TypeIcon className={cn("h-4 w-4", `text-${type.color}-600`)} />
+    <div className="flex items-center gap-3 py-3 px-2 hover:bg-muted/50 rounded-lg transition-colors border-b border-border/10 last:border-0">
+      <div className="p-2 rounded-lg bg-primary/5 shrink-0">
+        <Package className="h-4 w-4 text-primary" />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="font-medium text-sm truncate">{product.name}</span>
-          {product.type && (
-            <Badge variant="outline" className="text-[10px]">
-              {type.label}
-            </Badge>
-          )}
         </div>
-        <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
-          {product.minAmount && (
-            <span>من {product.minAmount.toLocaleString("ar-SA")} ر.س</span>
-          )}
-          {product.maxAmount && (
-            <span>إلى {product.maxAmount.toLocaleString("ar-SA")} ر.س</span>
-          )}
+        <div className="flex items-center gap-3 mt-0.5 text-[10px] text-muted-foreground font-mono">
           {product.interestRate && (
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1 text-emerald-600">
               <Percent className="h-3 w-3" />
               {product.interestRate}%
             </span>
+          )}
+          {product.minAmount && (
+            <span>من {product.minAmount.toLocaleString("ar-SA")}</span>
           )}
         </div>
       </div>
       <Badge
         variant={product.status === "active" ? "default" : "secondary"}
-        className={cn(
-          "text-[10px]",
-          product.status === "active" && "bg-emerald-500/10 text-emerald-600",
-        )}
+        className="text-[10px] scale-90"
       >
         {product.status === "active" ? "نشط" : "غير نشط"}
       </Badge>
       <Link href={`/bank-products/${product._id}`}>
-        <Button variant="ghost" size="icon" className="h-8 w-8">
-          <ChevronRight className="h-4 w-4" />
+        <Button variant="ghost" size="icon" className="h-7 w-7">
+          <ChevronRight className="h-3.5 w-3.5" />
         </Button>
       </Link>
     </div>
@@ -181,174 +100,91 @@ function BankCard({
 }) {
   const [expanded, setExpanded] = React.useState(false);
   const statusConfig = {
-    active: {
-      label: ar.active,
-      icon: CheckCircle,
-      className: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
-    },
-    suspended: {
-      label: ar.suspended,
-      icon: Pause,
-      className: "bg-rose-500/10 text-rose-600 border-rose-500/20",
-    },
-    inactive: {
-      label: ar.inactive,
-      icon: Activity,
-      className: "bg-gray-500/10 text-gray-600 border-gray-500/20",
-    },
+    active: { label: ar.active, icon: CheckCircle, color: "emerald" },
+    suspended: { label: ar.suspended, icon: Pause, color: "rose" },
+    inactive: { label: ar.inactive, icon: Activity, color: "amber" },
   };
-  const status =
-    statusConfig[bank.status as keyof typeof statusConfig] ||
-    statusConfig.inactive;
-  const StatusIcon = status.icon;
+  const status = statusConfig[bank.status as keyof typeof statusConfig] || statusConfig.inactive;
   const activeProducts = products.filter((p) => p.status === "active").length;
 
   return (
-    <Card className="group hover:shadow-md hover:border-primary/20 transition-all overflow-hidden">
-      <div
-        className={cn(
-          "h-1",
-          bank.status === "active"
-            ? "bg-emerald-500"
-            : bank.status === "suspended"
-              ? "bg-rose-500"
-              : "bg-gray-400",
-        )}
-      />
+    <Card className="group transition-all hover:border-primary/20 shadow-sm overflow-hidden">
+      <div className={cn("h-1", `bg-${status.color}-500`)} />
       <CardContent className="p-4">
         <div className="flex items-start gap-4">
-          <div className={cn("p-3 rounded-xl shrink-0", status.className)}>
+          <div className={cn("p-2.5 rounded-xl shrink-0 border border-border/50", `bg-${status.color}-500/5 text-${status.color}-600`)}>
             <Landmark className="h-5 w-5" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <Link
-                href={`/banks/${bank._id}`}
-                className="font-medium truncate hover:text-primary"
-              >
-                {bank.name}
-              </Link>
-            </div>
-            <p className="text-xs text-muted-foreground font-mono mt-0.5 truncate">
-              {bank.slug}
-            </p>
-            <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+            <Link href={`/banks/${bank._id}`} className="font-bold truncate hover:text-primary transition-colors block text-base">
+              {bank.name}
+            </Link>
+            <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
               {bank.contactEmail && (
                 <div className="flex items-center gap-1">
-                  <Mail className="h-3 w-3" />
-                  <span className="truncate max-w-[120px]">
-                    {bank.contactEmail}
-                  </span>
-                </div>
-              )}
-              {bank.website && (
-                <div className="flex items-center gap-1">
-                  <Globe className="h-3 w-3" />
-                  <a
-                    href={bank.website}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="hover:text-primary truncate max-w-[100px]"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    موقع
-                  </a>
+                  <Mail className="h-3 w-3 opacity-70" />
+                  <span className="truncate">{bank.contactEmail}</span>
                 </div>
               )}
             </div>
           </div>
-          <Badge
-            variant="outline"
-            className={cn("text-[10px] gap-1", status.className)}
-          >
-            <StatusIcon className="h-3 w-3" />
+          <Badge variant="outline" className={cn("text-[10px] gap-1", `bg-${status.color}-500/5 text-${status.color}-700 border-${status.color}-200`)}>
             {status.label}
           </Badge>
         </div>
 
-        {/* Products Summary */}
-        <div className="mt-3 flex items-center justify-between">
-          <div className="flex items-center gap-3 text-xs">
-            <div className="flex items-center gap-1.5">
-              <Package className="h-3.5 w-3.5 text-violet-600" />
-              <span className="font-medium">{products.length} منتج</span>
-            </div>
+        <div className="mt-4 flex items-center justify-between bg-muted/30 p-2 rounded-lg border border-border/50">
+          <div className="flex items-center gap-2 text-xs font-medium">
+            <Package className="h-3.5 w-3.5 text-muted-foreground" />
+            <span>{products.length} منتجات</span>
             {activeProducts > 0 && (
-              <Badge variant="secondary" className="text-[10px]">
-                {activeProducts} نشط
-              </Badge>
+              <span className="text-emerald-600">({activeProducts} نشط)</span>
             )}
           </div>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setExpanded(!expanded)}
-              className="gap-1 text-xs"
-            >
-              {expanded ? "إخفاء" : "عرض"} المنتجات
-              {expanded ? (
-                <ChevronUp className="h-3.5 w-3.5" />
-              ) : (
-                <ChevronDown className="h-3.5 w-3.5" />
-              )}
-            </Button>
-          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setExpanded(!expanded)}
+            className="h-7 text-[11px] px-2"
+          >
+            {expanded ? "إخفاء" : "عرض"}
+            {expanded ? <ChevronUp className="h-3 w-3 mr-1" /> : <ChevronDown className="h-3 w-3 mr-1" />}
+          </Button>
         </div>
 
-        {/* Expandable Products List */}
         {expanded && (
-          <div className="mt-3 border-t pt-3">
-            {products.length > 0 ? (
-              <ScrollArea className="h-[200px]">
-                <div className="space-y-1 pr-2">
-                  {products.map((product) => (
-                    <ProductRow key={product._id} product={product} />
-                  ))}
-                </div>
-              </ScrollArea>
-            ) : (
-              <div className="py-6 text-center text-muted-foreground text-sm">
-                لا توجد منتجات لهذا البنك
+          <div className="mt-2 border-t border-border/50 pt-2 animate-in slide-in-from-top-1 duration-200">
+            <ScrollArea className={cn("pr-2", products.length > 5 ? "h-[200px]" : "h-auto")}>
+              <div className="space-y-0.5">
+                {products.map((product) => (
+                  <ProductRow key={product._id} product={product} />
+                ))}
               </div>
-            )}
-            <div className="mt-3 flex justify-end gap-2">
-              <Button size="sm" variant="outline" asChild>
-                <Link href={`/bank-products?bankId=${bank._id}`}>
-                  <Plus className="h-3.5 w-3.5 ml-1" />
-                  إضافة منتج
-                </Link>
+            </ScrollArea>
+            <div className="mt-3 flex justify-end">
+              <Button size="sm" variant="secondary" className="h-8 text-xs font-normal" asChild>
+                <Link href={`/bank-products?bankId=${bank._id}`}>إدارة المنتجات</Link>
               </Button>
             </div>
           </div>
         )}
 
-        {/* Actions */}
-        <div className="mt-3 pt-3 border-t flex items-center justify-between">
+        <div className="mt-4 pt-4 border-t border-border/50 flex items-center justify-between">
           <div className="flex items-center gap-1">
-            <Button variant="outline" size="sm" asChild>
-              <Link href={`/banks/${bank._id}/edit`}>
-                <Edit className="h-3.5 w-3.5 ml-1" />
-                تعديل
-              </Link>
+            <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" asChild>
+              <Link href={`/banks/${bank._id}/edit`}><Edit className="h-3.5 w-3.5 ml-1.5" />تعديل</Link>
             </Button>
-            <Button variant="ghost" size="sm" asChild>
-              <Link href={`/banks/${bank._id}`}>
-                <ChevronRight className="h-3.5 w-3.5 ml-1" />
-                تفاصيل
-              </Link>
+            <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" asChild>
+              <Link href={`/banks/${bank._id}`}>التفاصيل</Link>
             </Button>
           </div>
           <Button
             variant="ghost"
-            size="sm"
-            onClick={(e) => {
-              e.preventDefault();
-              onDelete();
-            }}
-            className="text-rose-600 hover:text-rose-700 hover:bg-rose-500/10"
+            size="icon"
+            onClick={onDelete}
+            className="h-8 w-8 text-rose-500 hover:text-rose-600 hover:bg-rose-50"
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <Trash2 className="h-4 w-4" />
           </Button>
         </div>
       </CardContent>
@@ -381,36 +217,15 @@ export function BanksPageClient() {
   const filteredBanks = React.useMemo(() => {
     if (!banks) return [];
     let filtered = banks;
-
     if (search) {
-      const searchLower = search.toLowerCase();
-      filtered = filtered.filter(
-        (bank) =>
-          bank.name?.toLowerCase().includes(searchLower) ||
-          bank.slug?.toLowerCase().includes(searchLower) ||
-          bank.contactEmail?.toLowerCase().includes(searchLower),
-      );
+      const q = search.toLowerCase();
+      filtered = filtered.filter(b => b.name?.toLowerCase().includes(q) || b.slug?.toLowerCase().includes(q));
     }
-
     if (statusFilter !== "all") {
-      filtered = filtered.filter(
-        (b) => (b.status ?? "inactive") === statusFilter,
-      );
+      filtered = filtered.filter(b => (b.status || "inactive") === statusFilter);
     }
-
     return filtered;
   }, [banks, search, statusFilter]);
-
-  const stats = React.useMemo(() => {
-    if (!banks) return { total: 0, active: 0, inactive: 0, products: 0 };
-    return {
-      total: banks.length,
-      active: banks.filter((b) => b.status === "active").length,
-      inactive: banks.filter((b) => b.status === "inactive" || !b.status)
-        .length,
-      products: allProducts?.length ?? 0,
-    };
-  }, [banks, allProducts]);
 
   async function onConfirmDelete() {
     if (!deleteBankId) return;
@@ -426,83 +241,34 @@ export function BanksPageClient() {
 
   return (
     <div className="space-y-6">
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink href="/">{ar.dashboard}</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage className="flex items-center gap-2">
-              <Landmark className="h-4 w-4" />
-              {ar.banks}
-            </BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold">{ar.banks}</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            إدارة البنوك ومنتجاتها (قروض، تمويل، إلخ)
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" asChild>
-            <Link href="/bank-products">
-              <Package className="ml-2 h-4 w-4" />
-              كل المنتجات
-            </Link>
-          </Button>
-          <Button asChild>
-            <Link href="/banks/create">
-              <Plus className="ml-2 h-4 w-4" />
-              {ar.addBank}
-            </Link>
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title={ar.banks}
+        description="إدارة الشراكات المصرفية والمنتجات التمويلية."
+        icon={Landmark}
+        breadcrumbs={[{ label: ar.dashboard, href: "/" }, { label: ar.banks }]}
+        action={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" asChild className="hidden sm:flex">
+              <Link href="/bank-products"><Package className="ml-2 h-4 w-4" />المنتجات</Link>
+            </Button>
+            <Button asChild>
+              <Link href="/banks/create"><Plus className="ml-2 h-4 w-4" />{ar.addBank}</Link>
+            </Button>
+          </div>
+        }
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard
-          label="إجمالي البنوك"
-          value={stats.total}
-          icon={Landmark}
-          color="blue"
-        />
-        <StatCard
-          label="نشط"
-          value={stats.active}
-          icon={CheckCircle}
-          color="emerald"
-        />
-        <StatCard
-          label="غير نشط"
-          value={stats.inactive}
-          icon={Activity}
-          color="amber"
-        />
-        <StatCard
-          label="المنتجات"
-          value={stats.products}
-          icon={Package}
-          color="violet"
-        />
+        <StatCard label="إجمالي البنوك" value={banks?.length ?? 0} icon={Landmark} color="blue" />
+        <StatCard label="نشط" value={banks?.filter(b => b.status === "active").length ?? 0} icon={CheckCircle} color="emerald" />
+        <StatCard label="قيد المراجعة" value={banks?.filter(b => b.status === "suspended").length ?? 0} icon={Pause} color="amber" />
+        <StatCard label="المنتجات" value={allProducts?.length ?? 0} icon={Package} color="violet" />
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder={ar.searchBanks}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="ps-9"
-          />
-        </div>
+        <SearchInput value={search} onChange={setSearch} placeholder={ar.searchBanks} />
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-full sm:w-[160px]">
+          <SelectTrigger className="w-[140px]">
             <SelectValue placeholder={ar.status} />
           </SelectTrigger>
           <SelectContent>
@@ -516,33 +282,18 @@ export function BanksPageClient() {
 
       {loading ? (
         <div className="grid sm:grid-cols-2 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-48 rounded-xl" />
-          ))}
+          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-48 rounded-xl" />)}
         </div>
       ) : filteredBanks.length === 0 ? (
-        <Card>
-          <CardContent className="py-16 text-center">
-            <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
-              <Landmark className="h-6 w-6 text-muted-foreground" />
-            </div>
-            <p className="text-muted-foreground font-medium">
-              {ar.noBanksFound}
-            </p>
-            <p className="text-sm text-muted-foreground mt-1">
-              {ar.tryChangingSearch}
-            </p>
-            <Button asChild className="mt-4">
-              <Link href="/banks/create">
-                <Plus className="ml-2 h-4 w-4" />
-                {ar.addBank}
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Landmark}
+          title={ar.noBanksFound}
+          description={ar.tryChangingSearch}
+          action={<Button asChild><Link href="/banks/create">{ar.addBank}</Link></Button>}
+        />
       ) : (
-        <div className="grid sm:grid-cols-2 gap-4">
-          {filteredBanks.map((bank) => (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-2 gap-4">
+          {filteredBanks.map(bank => (
             <BankCard
               key={bank._id}
               bank={bank}
@@ -553,16 +304,7 @@ export function BanksPageClient() {
         </div>
       )}
 
-      {!loading && filteredBanks.length > 0 && (
-        <div className="text-center text-sm text-muted-foreground">
-          عرض {filteredBanks.length} من {stats.total} بنك
-        </div>
-      )}
-
-      <AlertDialog
-        open={!!deleteBankId}
-        onOpenChange={() => setDeleteBankId(null)}
-      >
+      <AlertDialog open={!!deleteBankId} onOpenChange={() => setDeleteBankId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
@@ -570,16 +312,12 @@ export function BanksPageClient() {
               {ar.deleteBankConfirm}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              هذا الإجراء لا يمكن التراجع عنه. سيتم حذف جميع المنتجات المرتبطة
-              بهذا البنك.
+              هذا الإجراء لا يمكن التراجع عنه. سيتم حذف جميع المنتجات المرتبطة بهذا البنك بشكل دائم.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{ar.cancel}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={onConfirmDelete}
-              className="bg-rose-600 hover:bg-rose-700"
-            >
+            <AlertDialogAction onClick={onConfirmDelete} className="bg-rose-600 hover:bg-rose-700">
               {ar.delete}
             </AlertDialogAction>
           </AlertDialogFooter>

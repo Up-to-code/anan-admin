@@ -1,78 +1,27 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import { ar } from "@/lib/ar";
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
-import {
   FileText,
-  Search,
   ChevronRight,
   Sparkles,
-  Save,
-  Plus,
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
-
-function StatCard({
-  label,
-  value,
-  icon: Icon,
-  color = "violet",
-}: {
-  label: string;
-  value: string | number;
-  icon?: React.ElementType;
-  color?: "violet" | "emerald" | "amber" | "blue";
-}) {
-  const colorClasses: Record<string, string> = {
-    violet: "bg-violet-500/10 text-violet-600",
-    emerald: "bg-emerald-500/10 text-emerald-600",
-    amber: "bg-amber-500/10 text-amber-600",
-    blue: "bg-blue-500/10 text-blue-600",
-  };
-
-  return (
-    <Card className="relative overflow-hidden">
-      <div
-        className={cn("absolute top-0 left-0 right-0 h-1", `bg-${color}-500`)}
-      />
-      <CardContent className="pt-5 pb-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground">{label}</p>
-            <p className="text-2xl font-bold mt-1">{value}</p>
-          </div>
-          {Icon && (
-            <div className={cn("p-2.5 rounded-xl", colorClasses[color])}>
-              <Icon className="h-4 w-4" />
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+import {
+  PageHeader,
+  StatCard,
+  EmptyState,
+  SearchInput,
+  ResultCount,
+} from "@/components/admin/ui";
 
 function PromptCard({ prompt }: { prompt: any }) {
   return (
@@ -134,25 +83,15 @@ export default function PromptsPage() {
 
   return (
     <div className="space-y-6">
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink href="/">{ar.dashboard}</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4" />
-              {ar.prompts}
-            </BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-
-      <div>
-        <h1 className="text-xl font-bold">{ar.prompts}</h1>
-        <p className="text-sm text-muted-foreground mt-1">{ar.content}</p>
-      </div>
+      <PageHeader
+        title={ar.prompts}
+        description={ar.content}
+        icon={Sparkles}
+        breadcrumbs={[
+          { label: ar.dashboard, href: "/" },
+          { label: ar.prompts },
+        ]}
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
@@ -170,15 +109,11 @@ export default function PromptsPage() {
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="بحث في القوالب..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="ps-9"
-          />
-        </div>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="بحث في القوالب..."
+        />
       </div>
 
       {loading ? (
@@ -194,25 +129,18 @@ export default function PromptsPage() {
           ))}
         </div>
       ) : (
-        <Card>
-          <CardContent className="py-16 text-center">
-            <div className="mx-auto w-12 h-12 rounded-full bg-violet-500/10 flex items-center justify-center mb-4">
-              <Sparkles className="h-6 w-6 text-violet-600" />
-            </div>
-            <p className="text-muted-foreground font-medium">{ar.noPrompts}</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              {ar.noPromptsCurrently}
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Sparkles}
+          title={ar.noPrompts}
+          description={ar.noPromptsCurrently}
+        />
       )}
 
       {!loading && filteredPrompts.length > 0 && (
-        <div className="text-center text-sm text-muted-foreground">
-          {ar.showingCountOfTotalPrompts
-              .replace("{count}", String(filteredPrompts.length))
-              .replace("{total}", String(stats.total))}
-        </div>
+        <ResultCount
+          showing={filteredPrompts.length}
+          total={stats.total}
+        />
       )}
     </div>
   );

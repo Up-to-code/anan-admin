@@ -28,14 +28,6 @@ import {
   chartColors,
 } from "@/components/ui/charts";
 import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
-import {
   BarChart3,
   TrendingUp,
   TrendingDown,
@@ -57,6 +49,7 @@ import {
 import { ar } from "@/lib/ar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { StatCard, PageHeader } from "@/components/admin/ui";
 
 interface OpenRouterModel {
   id: string;
@@ -87,81 +80,6 @@ function formatCompactNumber(value: number): string {
   if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
   if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
   return value.toString();
-}
-
-function MetricCard({
-  title,
-  value,
-  subtitle,
-  icon: Icon,
-  trend,
-  trendUp,
-  color = "primary",
-}: {
-  title: string;
-  value: string | number;
-  subtitle?: string;
-  icon: React.ElementType;
-  trend?: string;
-  trendUp?: boolean;
-  color?: "primary" | "emerald" | "amber" | "rose" | "blue";
-}) {
-  const colorClasses = {
-    primary: "bg-primary/10 text-primary",
-    emerald: "bg-emerald-500/10 text-emerald-600",
-    amber: "bg-amber-500/10 text-amber-600",
-    rose: "bg-rose-500/10 text-rose-600",
-    blue: "bg-blue-500/10 text-blue-600",
-  };
-
-  const trendColor =
-    trendUp === true
-      ? "text-emerald-600"
-      : trendUp === false
-        ? "text-rose-600"
-        : "text-muted-foreground";
-
-  return (
-    <Card className="relative overflow-hidden">
-      <div
-        className={cn(
-          "absolute top-0 left-0 right-0 h-1",
-          color === "primary" ? "bg-primary" : `bg-${color}-500`,
-        )}
-      />
-      <CardContent className="pt-6">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">{title}</p>
-            <p className="text-2xl font-bold tracking-tight">{value}</p>
-            {subtitle && (
-              <p className="text-xs text-muted-foreground">{subtitle}</p>
-            )}
-          </div>
-          <div className={cn("p-2.5 rounded-xl", colorClasses[color])}>
-            <Icon className="h-5 w-5" />
-          </div>
-        </div>
-        {trend && (
-          <div
-            className={cn(
-              "flex items-center gap-1.5 mt-3 pt-3 border-t",
-              trendColor,
-            )}
-          >
-            {trendUp === true ? (
-              <ArrowUpRight className="h-4 w-4" />
-            ) : trendUp === false ? (
-              <ArrowDownRight className="h-4 w-4" />
-            ) : (
-              <Minus className="h-4 w-4" />
-            )}
-            <span className="text-xs font-medium">{trend}</span>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
 }
 
 function StatusBadge({ status }: { status: "good" | "warning" | "critical" }) {
@@ -281,22 +199,22 @@ export default function LLMAnalyticsPage() {
           ? `${i}:00`
           : range === "year"
             ? [
-                "يناير",
-                "فبراير",
-                "مارس",
-                "أبريل",
-                "مايو",
-                "يونيو",
-                "يوليو",
-                "أغسطس",
-                "سبتمبر",
-                "أكتوبر",
-                "نوفمبر",
-                "ديسمبر",
-              ][i] || `${i + 1}`
+              "يناير",
+              "فبراير",
+              "مارس",
+              "أبريل",
+              "مايو",
+              "يونيو",
+              "يوليو",
+              "أغسطس",
+              "سبتمبر",
+              "أكتوبر",
+              "نوفمبر",
+              "ديسمبر",
+            ][i] || `${i + 1}`
             : ["سبت", "أحد", "إثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة"][
-                i % 7
-              ] || `${i + 1}`,
+            i % 7
+            ] || `${i + 1}`,
       tokens,
       requests: requestsSeries[i] || 0,
     }));
@@ -345,83 +263,67 @@ export default function LLMAnalyticsPage() {
 
   return (
     <div className="space-y-6">
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink href="/">{ar.dashboard}</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>تحليلات AI</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            <Zap className="h-5 w-5 text-primary" />
-            تحليلات AI
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            مراقبة استخدام النماذج والتكاليف وأداء الأعمال
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Select value={timeRange} onValueChange={setTimeRange}>
-            <SelectTrigger className="w-36">
-              <Clock className="h-4 w-4 ml-2 text-muted-foreground" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="day">{ar.day}</SelectItem>
-              <SelectItem value="week">{ar.week}</SelectItem>
-              <SelectItem value="month">{ar.month}</SelectItem>
-              <SelectItem value="year">{ar.year}</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => window.location.reload()}
-          >
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="تحليلات AI"
+        description="مراقبة استخدام النماذج والتكاليف وأداء الأعمال"
+        icon={Zap}
+        breadcrumbs={[{ label: "تحليلات AI" }]}
+        action={
+          <div className="flex items-center gap-2">
+            <Select value={timeRange} onValueChange={setTimeRange}>
+              <SelectTrigger className="w-36">
+                <Clock className="h-4 w-4 ml-2 text-muted-foreground" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="day">{ar.day}</SelectItem>
+                <SelectItem value="week">{ar.week}</SelectItem>
+                <SelectItem value="month">{ar.month}</SelectItem>
+                <SelectItem value="year">{ar.year}</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => window.location.reload()}
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </div>
+        }
+      />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <MetricCard
-          title="إجمالي الرموز"
+        <StatCard
+          label="إجمالي الرموز"
           value={formatCompactNumber(totalTokens)}
-          subtitle={`${formatNumber(totalPromptTokens)} مدخل · ${formatNumber(totalCompletionTokens)} إخراج`}
+          description={`${formatNumber(totalPromptTokens)} مدخل · ${formatNumber(totalCompletionTokens)} إخراج`}
           icon={Cpu}
           color="blue"
           trend={`${formatCompactNumber(weeklyRequests)} طلب هذا الأسبوع`}
-          trendUp={undefined}
         />
-        <MetricCard
-          title="التكلفة المقدرة"
+        <StatCard
+          label="التكلفة المقدرة"
           value={formatCurrency(estimatedCost)}
-          subtitle="من أسعار OpenRouter"
+          description="من أسعار OpenRouter"
           icon={DollarSign}
           color="emerald"
           trend={estimatedCost > 1 ? "يتطلب مراقبة" : "ضمن الميزانية"}
           trendUp={estimatedCost <= 1}
         />
-        <MetricCard
-          title="التكلفة لكل مستخدم"
+        <StatCard
+          label="التكلفة لكل مستخدم"
           value={formatCurrency(costPerUser)}
-          subtitle={`${formatNumber(totalUsers)} مستخدم نشط`}
+          description={`${formatNumber(totalUsers)} مستخدم نشط`}
           icon={Users}
           color="amber"
           trend={costPerUser < 0.01 ? "منخفضة" : "مرتفعة"}
           trendUp={costPerUser < 0.01}
         />
-        <MetricCard
-          title="معدل التحويل"
+        <StatCard
+          label="معدل التحويل"
           value={`${successRate.toFixed(1)}%`}
-          subtitle={`${closedWon} مبيعات من ${totalOrders} طلب`}
+          description={`${closedWon} مبيعات من ${totalOrders} طلب`}
           icon={Target}
           color={
             successRate >= 20 ? "emerald" : successRate >= 10 ? "amber" : "rose"

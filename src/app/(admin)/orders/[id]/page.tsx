@@ -47,6 +47,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PageHeader, StatCard } from "@/components/admin/ui";
+import type { LucideIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
@@ -186,178 +188,60 @@ export default function OrderDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink href="/">{ar.dashboard}</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink href="/orders">{ar.orders}</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage className="flex items-center gap-2">
-              <Package className="h-4 w-4" />
-              طلب #{order._id.slice(-6)}
-            </BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-
-      <Card className="relative overflow-hidden">
-        <div className={cn("h-1", status.bgColor)} />
-        <CardContent className="pt-6 pb-4">
-          <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
-            <div className="flex items-start gap-4">
-              <div className={cn("p-4 rounded-xl", status.bgColor)}>
-                <StatusIcon className={cn("h-8 w-8", status.textColor)} />
-              </div>
-              <div>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <h1 className="text-xl font-bold">
-                    {order.userName || ar.unnamedCustomer}
-                  </h1>
-                  <Badge
-                    className={cn(
-                      status.bgColor,
-                      status.textColor,
-                      "border-0 text-xs",
-                    )}
-                  >
-                    {status.label}
-                  </Badge>
-                  {isStale && !isWon && !isLost && (
-                    <Badge
-                      variant="outline"
-                      className="text-amber-600 border-amber-500/30"
-                    >
-                      <AlertTriangle className="h-3 w-3 ml-1" />
-                      قديم
-                    </Badge>
-                  )}
-                </div>
-                <div className="flex items-center gap-4 mt-2 text-muted-foreground">
-                  <div className="flex items-center gap-1.5 text-sm">
-                    <Phone className="h-4 w-4" />
-                    <span dir="ltr">{order.userPhone || "-"}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-sm">
-                    <Clock className="h-4 w-4" />
-                    <span>{order.ageHours} ساعة</span>
-                  </div>
-                </div>
-                <div className="mt-3">
-                  <Button variant="outline" size="sm" asChild>
-                    <Link href={`/users/${order.userId}?tab=conversation`}>
-                      <MessageSquare className="h-4 w-4 ml-2" />
-                      {ar.conversation}
-                    </Link>
-                  </Button>
-                </div>
-              </div>
-            </div>
+      <PageHeader
+        title={order.userName || ar.unnamedCustomer}
+        description={`طلب #${order._id.slice(-6)}`}
+        icon={Package}
+        breadcrumbs={[
+          { label: ar.orders, href: "/orders" },
+          { label: order.userName || ar.unnamedCustomer },
+        ]}
+        action={
+          <div className="flex items-center gap-3">
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/users/${order.userId}?tab=conversation`}>
+                <MessageSquare className="h-4 w-4 ml-2" />
+                {ar.conversation}
+              </Link>
+            </Button>
+            {isStale && !isWon && !isLost && (
+              <Badge
+                variant="outline"
+                className="text-amber-600 border-amber-500/30"
+              >
+                <AlertTriangle className="h-3 w-3 ml-1" />
+                قديم
+              </Badge>
+            )}
           </div>
-        </CardContent>
-      </Card>
+        }
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-emerald-500" />
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-emerald-500/10">
-                <DollarSign className="h-4 w-4 text-emerald-600" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{ar.budget}</p>
-                <p className="text-lg font-bold">
-                  {order.budget
-                    ? `${order.budget.toLocaleString("ar-SA")} ر.س`
-                    : "-"}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-blue-500" />
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-blue-500/10">
-                <Target className="h-4 w-4 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{ar.type}</p>
-                <p className="text-lg font-bold">
-                  {(ar as any)[order.type] || order.type}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="relative overflow-hidden">
-          <div
-            className={cn(
-              "absolute top-0 left-0 right-0 h-1",
-              order.priority === "high"
-                ? "bg-rose-500"
-                : order.priority === "low"
-                  ? "bg-gray-400"
-                  : "bg-amber-500",
-            )}
-          />
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-center gap-3">
-              <div
-                className={cn(
-                  "p-2.5 rounded-xl",
-                  order.priority === "high"
-                    ? "bg-rose-500/10"
-                    : order.priority === "low"
-                      ? "bg-gray-500/10"
-                      : "bg-amber-500/10",
-                )}
-              >
-                <Activity
-                  className={cn(
-                    "h-4 w-4",
-                    order.priority === "high"
-                      ? "text-rose-600"
-                      : order.priority === "low"
-                        ? "text-gray-600"
-                        : "text-amber-600",
-                  )}
-                />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{ar.priority}</p>
-                <p className="text-lg font-bold">
-                  {(ar as any)[order.priority || "medium"] || order.priority}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-violet-500" />
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-violet-500/10">
-                <Calendar className="h-4 w-4 text-violet-600" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{ar.createdAt}</p>
-                <p className="text-sm font-bold">
-                  {new Date(order._creationTime).toLocaleDateString("ar-SA")}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard
+          label={ar.budget}
+          value={order.budget ? `${order.budget.toLocaleString("ar-SA")} ر.س` : "-"}
+          icon={DollarSign}
+          color="emerald"
+        />
+        <StatCard
+          label={ar.type}
+          value={(ar as any)[order.type] || order.type}
+          icon={Target}
+          color="blue"
+        />
+        <StatCard
+          label={ar.priority}
+          value={(ar as any)[order.priority || "medium"] || order.priority}
+          icon={Activity}
+          color={order.priority === "high" ? "rose" : order.priority === "low" ? "blue" : "amber"}
+        />
+        <StatCard
+          label={ar.createdAt}
+          value={new Date(order._creationTime).toLocaleDateString("ar-SA")}
+          icon={Calendar}
+          color="violet"
+        />
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">

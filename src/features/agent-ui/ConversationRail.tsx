@@ -2,7 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { ar } from "@/lib/ar";
-import { Check, Edit3, Plus, Search, Trash2, X } from "lucide-react";
+import { Bot, Check, Edit3, Plus, Search, Trash2, X } from "lucide-react";
+import { useSession } from "@/lib/auth-client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 import type { AgentThread } from "./types";
 
 function formatDate(timestamp: number): string {
@@ -15,7 +22,7 @@ function formatDate(timestamp: number): string {
 
 function getBucketLabel(
   timestamp: number
-): typeof ar.today | typeof ar.thisWeek | typeof ar.older {
+): typeof ar.today | typeof ar.last7Days | typeof ar.older {
   const now = new Date();
   const target = new Date(timestamp);
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -26,8 +33,27 @@ function getBucketLabel(
   ).getTime();
   const dayDiff = Math.floor((startOfToday - startOfTargetDay) / (1000 * 60 * 60 * 24));
   if (dayDiff <= 0) return ar.today;
-  if (dayDiff <= 7) return ar.thisWeek;
+  if (dayDiff <= 7) return ar.last7Days;
   return ar.older;
+}
+
+function AgentRailUserFooter() {
+  const { data: session } = useSession();
+  const name = session?.user?.name ?? session?.user?.email ?? ar.admin;
+  const image = session?.user?.image;
+
+  return (
+    <div className="flex items-center gap-3 p-3 mt-auto border-t border-white/10 bg-black/50 text-white">
+      <Avatar className="h-8 w-8 border border-white/10">
+        <AvatarImage src={image ?? undefined} />
+        <AvatarFallback className="bg-zinc-800 text-white">{(name ?? "A").charAt(0)}</AvatarFallback>
+      </Avatar>
+      <div className="flex flex-col overflow-hidden">
+        <span className="text-sm font-medium truncate text-zinc-200">{name}</span>
+        <span className="text-xs text-zinc-500">{ar.admin}</span>
+      </div>
+    </div>
+  );
 }
 
 export function ConversationRail({
@@ -62,11 +88,11 @@ export function ConversationRail({
     const filtered = !normalized
       ? threads
       : threads.filter((thread) =>
-      (thread.title ?? ar.newChat).toLowerCase().includes(normalized)
-    );
+        (thread.title ?? ar.newChat).toLowerCase().includes(normalized)
+      );
     const groups: Record<string, AgentThread[]> = {
       [ar.today]: [],
-      [ar.thisWeek]: [],
+      [ar.last7Days]: [],
       [ar.older]: [],
     };
     for (const thread of filtered) {
@@ -76,49 +102,47 @@ export function ConversationRail({
   }, [threads, query]);
 
   return (
-    <div dir="rtl" className="agent-rail-rtl">
-      <div className="agent-rail-header">
-        <button
-          className="agent-btn primary"
-          style={{ width: "100%", justifyContent: "flex-start" }}
+    <div dir="rtl" className="flex flex-1 flex-col min-h-0 overflow-hidden text-zinc-100">
+      <div className="p-3">
+        <Button
+          className="w-full justify-start gap-2 bg-zinc-800/50 hover:bg-zinc-800 text-white border-0"
           onClick={() => {
             onNewThread();
             onThreadChosen?.();
           }}
           disabled={isBusy}
         >
-          <Plus size={15} />
+          <Plus size={16} />
           {ar.newChat}
-        </button>
+        </Button>
       </div>
 
-      <div className="agent-rail-section">
-        <div className="agent-section-label">{ar.conversations}</div>
-        <div className="agent-inline-row">
-          <Search size={14} />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="agent-search"
-            placeholder={ar.searchSessions}
-          />
-        </div>
+      <div className="px-3 pb-2 relative">
+        <Search className="absolute right-5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={14} />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="h-9 pr-9 pl-2 text-sm bg-zinc-900/50 border-zinc-800 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-zinc-700"
+          placeholder={ar.searchSessions}
+        />
       </div>
 
-      <div className="agent-scroll agent-rail-section" style={{ paddingTop: 0 }}>
-        <div className="agent-thread-list">
+      <ScrollArea className="flex-1 min-h-0 px-3">
+        <div className="space-y-6 pb-4">
+          <div className="text-xs font-semibold text-zinc-500 mb-2 mt-2">{ar.conversations}</div>
+
           {isLoading ? (
-            <>
-              <div className="agent-thread-item">{ar.loadingSessions}</div>
-              <div className="agent-thread-item">{ar.loadingSessions}</div>
-            </>
+            <div className="space-y-2">
+              <div className="h-9 bg-zinc-800/20 rounded-md animate-pulse" />
+              <div className="h-9 bg-zinc-800/20 rounded-md animate-pulse" />
+            </div>
           ) : Object.values(groupedThreads).every((group) => group.length === 0) ? (
-            <div className="agent-thread-item">{ar.noSessionsYet}</div>
+            <div className="text-center text-sm text-zinc-500 py-8">{ar.noSessionsYet}</div>
           ) : (
-            ([ar.today, ar.thisWeek, ar.older] as const).map((bucket) =>
+            ([ar.today, ar.last7Days, ar.older] as const).map((bucket) =>
               groupedThreads[bucket].length > 0 ? (
-                <div key={bucket} className="agent-thread-group">
-                  <div className="agent-section-label">{bucket}</div>
+                <div key={bucket} className="space-y-1">
+                  <div className="text-[10px] font-medium text-zinc-600 uppercase tracking-wider px-2 py-1">{bucket}</div>
                   {groupedThreads[bucket].map((thread) => {
                     const isActive = thread._id === activeThreadId;
                     const isEditing = thread._id === editingThreadId;
@@ -126,15 +150,19 @@ export function ConversationRail({
                     return (
                       <div
                         key={thread._id}
-                        className={`agent-thread-item ${isActive ? "active" : ""}`}
+                        className={cn(
+                          "group relative flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors hover:bg-zinc-800/50",
+                          isActive && "bg-zinc-800 font-medium text-white"
+                        )}
                       >
-                        <div style={{ minWidth: 0, flex: 1 }}>
+                        <div className="flex-1 min-w-0">
                           {isEditing ? (
-                            <div style={{ display: "grid", gap: 6 }}>
-                              <input
-                                className="agent-rename-input"
+                            <div className="flex items-center gap-1">
+                              <Input
+                                className="h-7 text-xs px-2 bg-zinc-900 border-zinc-700"
                                 value={editingTitle}
                                 onChange={(e) => setEditingTitle(e.target.value)}
+                                autoFocus
                                 onKeyDown={(e) => {
                                   if (e.key === "Enter") {
                                     e.preventDefault();
@@ -150,65 +178,73 @@ export function ConversationRail({
                                   }
                                 }}
                               />
-                              <div className="agent-inline-row">
-                                <button
-                                  className="agent-btn icon ghost"
-                                  onClick={() =>
-                                    void onRenameThread(thread._id, editingTitle.trim()).then(() => {
-                                      setEditingThreadId(null);
-                                      setEditingTitle("");
-                                    })
-                                  }
-                                >
-                                  <Check size={14} />
-                                </button>
-                                <button
-                                  className="agent-btn icon ghost"
-                                  onClick={() => {
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 hover:bg-zinc-700"
+                                onClick={() =>
+                                  void onRenameThread(thread._id, editingTitle.trim()).then(() => {
                                     setEditingThreadId(null);
                                     setEditingTitle("");
-                                  }}
-                                >
-                                  <X size={14} />
-                                </button>
-                              </div>
+                                  })
+                                }
+                              >
+                                <Check size={12} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 hover:bg-zinc-700"
+                                onClick={() => {
+                                  setEditingThreadId(null);
+                                  setEditingTitle("");
+                                }}
+                              >
+                                <X size={12} />
+                              </Button>
                             </div>
                           ) : (
                             <button
-                              className="agent-thread-main"
+                              className="w-full text-right outline-none"
                               onClick={() => {
                                 onSelectThread(thread._id);
                                 onThreadChosen?.();
                               }}
                             >
-                              <div className="agent-thread-title">{thread.title?.trim() || ar.newChat}</div>
-                              <div className="agent-thread-meta">{formatDate(thread._creationTime)}</div>
+                              <div className="truncate text-sm text-zinc-300 group-hover:text-white transition-colors">{thread.title?.trim() || ar.newChat}</div>
+                              <div className="truncate text-xs text-zinc-600">{formatDate(thread._creationTime)}</div>
                             </button>
                           )}
                         </div>
 
-                        {!isEditing ? (
-                          <div className="agent-thread-actions">
-                            <button
-                              className="agent-btn icon ghost"
-                              onClick={() => {
+                        {!isEditing && (
+                          <div className={cn("hidden items-center gap-0.5 opacity-0 transition-opacity group-hover:flex group-hover:opacity-100 focus-within:opacity-100", isActive && "flex opacity-100")}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-zinc-500 hover:text-white hover:bg-zinc-700"
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setEditingThreadId(thread._id);
                                 setEditingTitle(thread.title?.trim() || "");
                               }}
-                              aria-label={ar.editTitle}
                             >
-                              <Edit3 size={14} />
-                            </button>
-                            <button
-                              className="agent-btn icon ghost"
+                              <Edit3 size={12} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-zinc-500 hover:text-red-400 hover:bg-zinc-900/50"
                               disabled={deletingThreadId === thread._id}
-                              onClick={() => onDeleteThread(thread._id)}
-                              aria-label={ar.deleteConversation}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteThread(thread._id);
+                              }}
                             >
-                              <Trash2 size={14} />
-                            </button>
+                              <Trash2 size={12} />
+                            </Button>
                           </div>
-                        ) : null}
+                        )}
                       </div>
                     );
                   })}
@@ -217,7 +253,9 @@ export function ConversationRail({
             )
           )}
         </div>
-      </div>
+      </ScrollArea>
+
+      <AgentRailUserFooter />
     </div>
   );
 }

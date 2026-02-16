@@ -148,15 +148,15 @@ Apartment Jeddah	2BR modern apt	https://example.com/2	https://images.aqar.fm/apt
 
     expect(formatted.offerBlocks).toEqual([
       {
-        text: "1. Offer One\n- First description",
+        text: "*1. Offer One*\n\nFirst description",
         imageUrl: "https://img.example.com/one.jpg",
       },
       {
-        text: "2. Offer Two\n- Second description",
+        text: "*2. Offer Two*\n\nSecond description",
         imageUrl: undefined,
       },
       {
-        text: "3. Offer Three\n- Third description",
+        text: "*3. Offer Three*\n\nThird description",
         imageUrl: "https://img.example.com/three.jpg",
       },
     ]);

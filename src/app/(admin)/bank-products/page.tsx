@@ -27,6 +27,7 @@ import { Plus, Pencil, Trash2, Package, Settings2 } from "lucide-react";
 import { ar } from "@/lib/ar";
 import { toast } from "sonner";
 import { BankProductForm } from "@/components/banks/BankProductForm";
+import { PageHeader } from "@/components/admin/ui";
 
 export default function BankProductsPage() {
   const searchParams = useSearchParams();
@@ -123,78 +124,80 @@ export default function BankProductsPage() {
   if (products === undefined || banks === undefined) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-64 w-full" />
+        <Skeleton className="h-10 w-48 mb-4" />
+        <Skeleton className="h-64 w-full rounded-xl" />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold">{ar.products}</h1>
-          <p className="text-sm text-muted-foreground">
-            {ar.manageBankProductsDesc}
-          </p>
-        </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="h-4 w-4 ml-2" />
-          {ar.createProduct}
-        </Button>
-      </div>
+      <PageHeader
+        title={ar.products}
+        description={ar.manageBankProductsDesc}
+        icon={Package}
+        breadcrumbs={[{ label: ar.dashboard, href: "/" }, { label: ar.banks, href: "/banks" }, { label: ar.products }]}
+        action={
+          <Button onClick={() => setCreateOpen(true)} className="h-9">
+            <Plus className="h-4 w-4 ml-2" />
+            {ar.createProduct}
+          </Button>
+        }
+      />
 
-      <Card>
+      <Card className="border-border/50 shadow-sm overflow-hidden">
         <CardContent className="p-0">
           {products.length > 0 ? (
             <Table>
-              <TableHeader>
+              <TableHeader className="bg-muted/30">
                 <TableRow>
-                  <TableHead>{ar.name}</TableHead>
-                  <TableHead>{ar.bank}</TableHead>
-                  <TableHead>{ar.type}</TableHead>
-                  <TableHead>الشروط</TableHead>
-                  <TableHead className="w-24">{ar.actions}</TableHead>
+                  <TableHead className="font-bold">{ar.name}</TableHead>
+                  <TableHead className="font-bold">{ar.bank}</TableHead>
+                  <TableHead className="font-bold">{ar.type}</TableHead>
+                  <TableHead className="font-bold">الشروط</TableHead>
+                  <TableHead className="w-24 text-left font-bold">{ar.actions}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {products.map((product) => (
-                  <TableRow key={product._id}>
-                    <TableCell className="font-medium">
+                  <TableRow key={product._id} className="hover:bg-muted/10 transition-colors">
+                    <TableCell className="font-medium text-sm">
                       {product.name}
                     </TableCell>
-                    <TableCell>{getBankName(product.bankId)}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{getBankName(product.bankId)}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">
+                      <Badge variant="outline" className="text-[10px] font-normal">
                         {productTypeLabels[product.type] || product.type}
                       </Badge>
                     </TableCell>
                     <TableCell>
                       {product.rules &&
-                      Object.keys(product.rules).length > 0 ? (
-                        <Badge variant="secondary" className="gap-1">
+                        Object.keys(product.rules).length > 0 ? (
+                        <Badge variant="secondary" className="gap-1 text-[10px] h-5 bg-primary/5 text-primary border-0">
                           <Settings2 className="h-3 w-3" />
                           {Object.keys(product.rules).length} شروط
                         </Badge>
                       ) : (
-                        <span className="text-muted-foreground text-sm">-</span>
+                        <span className="text-muted-foreground text-[10px] opacity-50">-</span>
                       )}
                     </TableCell>
                     <TableCell>
-                      <div className="flex gap-1">
+                      <div className="flex gap-1 justify-end">
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="h-8 w-8 text-primary hover:bg-primary/5"
                           onClick={() => setEditProduct(product as any)}
                         >
-                          <Pencil className="h-4 w-4" />
+                          <Pencil className="h-3.5 w-3.5" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="h-8 w-8 text-rose-500 hover:bg-rose-50"
                           onClick={() => handleDelete(product._id)}
                         >
-                          <Trash2 className="h-4 w-4 text-destructive" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </TableCell>
@@ -203,9 +206,13 @@ export default function BankProductsPage() {
               </TableBody>
             </Table>
           ) : (
-            <div className="py-12 text-center text-muted-foreground">
-              <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>{ar.noProducts}</p>
+            <div className="py-16 text-center text-muted-foreground">
+              <Package className="h-12 w-12 mx-auto mb-4 opacity-20" />
+              <p className="font-medium">{ar.noProducts}</p>
+              <Button onClick={() => setCreateOpen(true)} variant="outline" className="mt-4">
+                <Plus className="h-4 w-4 ml-2" />
+                {ar.createProduct}
+              </Button>
             </div>
           )}
         </CardContent>
@@ -214,13 +221,13 @@ export default function BankProductsPage() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{ar.createProduct}</DialogTitle>
+            <DialogTitle className="font-bold">{ar.createProduct}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 pt-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">{ar.bank}</label>
+              <label className="text-sm font-bold">{ar.bank}</label>
               <select
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none"
                 value={selectedBankId || ""}
                 onChange={(e) =>
                   setSelectedBankId(
@@ -237,11 +244,13 @@ export default function BankProductsPage() {
               </select>
             </div>
             {selectedBankId && (
-              <BankProductForm
-                onSubmit={handleCreate}
-                onCancel={() => setCreateOpen(false)}
-                submitLabel={ar.createProduct}
-              />
+              <div className="border-t pt-4">
+                <BankProductForm
+                  onSubmit={handleCreate}
+                  onCancel={() => setCreateOpen(false)}
+                  submitLabel={ar.createProduct}
+                />
+              </div>
             )}
           </div>
         </DialogContent>
@@ -250,19 +259,21 @@ export default function BankProductsPage() {
       <Dialog open={!!editProduct} onOpenChange={() => setEditProduct(null)}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{ar.edit}</DialogTitle>
+            <DialogTitle className="font-bold">{ar.edit}</DialogTitle>
           </DialogHeader>
           {editProduct && (
-            <BankProductForm
-              defaultValues={{
-                name: editProduct.name,
-                type: editProduct.type,
-                description: editProduct.description,
-                rules: editProduct.rules,
-              }}
-              onSubmit={handleUpdate}
-              onCancel={() => setEditProduct(null)}
-            />
+            <div className="pt-4">
+              <BankProductForm
+                defaultValues={{
+                  name: editProduct.name,
+                  type: editProduct.type,
+                  description: editProduct.description,
+                  rules: editProduct.rules,
+                }}
+                onSubmit={handleUpdate}
+                onCancel={() => setEditProduct(null)}
+              />
+            </div>
           )}
         </DialogContent>
       </Dialog>

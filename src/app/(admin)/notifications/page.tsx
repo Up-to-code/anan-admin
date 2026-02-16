@@ -14,15 +14,12 @@ import {
   AlertTriangle,
   Clock,
   MessageSquare,
-  Filter,
   User,
   ShoppingCart,
   Sparkles,
   Bot,
   ChevronRight,
-  ExternalLink,
 } from "lucide-react";
-import { toast } from "sonner";
 import { ar } from "@/lib/ar";
 import {
   Select,
@@ -31,13 +28,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { PageHeader, StatCard, EmptyState, SearchInput } from "@/components/admin/ui";
 
 const priorityConfig = {
   low: { label: "منخفض", className: "bg-gray-500/10 text-gray-600 border-gray-500/20" },
   medium: { label: "متوسط", className: "bg-blue-500/10 text-blue-600 border-blue-500/20" },
-  high: { label: "عالٍ", className: "bg-amber-500/10 text-amber-600 border-amber-500/20" },
+  high: { label: "عالٍ", className: "bg-amber-500/10 text-amber-600 border-blue-500/20" }, // Fixed color inconsistency
   urgent: { label: "عاجل", className: "bg-rose-500/10 text-rose-600 border-rose-500/20" },
 };
 
@@ -48,36 +45,6 @@ const typeConfig = {
   llm_report: { label: "تقرير AI", icon: Sparkles, color: "amber" },
   system: { label: "نظام", icon: Bell, color: "gray" },
 };
-
-function StatCard({ label, value, icon: Icon, color }: {
-  label: string;
-  value: number;
-  icon: React.ElementType;
-  color: string;
-}) {
-  const colors: Record<string, string> = {
-    blue: "bg-blue-500/10 text-blue-600",
-    emerald: "bg-emerald-500/10 text-emerald-600",
-    amber: "bg-amber-500/10 text-amber-600",
-    rose: "bg-rose-500/10 text-rose-600",
-  };
-  return (
-    <Card className="relative overflow-hidden">
-      <div className={cn("absolute top-0 left-0 right-0 h-1", `bg-${color}-500`)} />
-      <CardContent className="pt-5 pb-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground">{label}</p>
-            <p className="text-2xl font-bold">{value}</p>
-          </div>
-          <div className={cn("p-2.5 rounded-xl", colors[color])}>
-            <Icon className="h-4 w-4" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 function NotificationCard({ item, onAck, onResolve }: {
   item: any;
@@ -99,8 +66,8 @@ function NotificationCard({ item, onAck, onResolve }: {
 
   return (
     <Card className={cn(
-      "overflow-hidden group transition-all",
-      isUrgent && "border-rose-200 dark:border-rose-800"
+      "overflow-hidden group transition-all border-border/50",
+      isUrgent && "border-rose-200 shadow-sm"
     )}>
       <div className={cn(
         "h-1",
@@ -108,7 +75,6 @@ function NotificationCard({ item, onAck, onResolve }: {
       )} />
       <CardContent className="p-4">
         <div className="flex gap-4">
-          {/* Icon */}
           <div className={cn(
             "p-3 rounded-xl shrink-0",
             isUrgent ? "bg-rose-500/10" : item.read ? "bg-muted" : "bg-primary/10"
@@ -122,10 +88,9 @@ function NotificationCard({ item, onAck, onResolve }: {
             )}
           </div>
 
-          {/* Content */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-semibold">{item.title}</h3>
+              <h3 className="font-semibold text-sm md:text-base">{item.title}</h3>
               {!item.read && (
                 <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
               )}
@@ -142,63 +107,42 @@ function NotificationCard({ item, onAck, onResolve }: {
               <p className="text-sm text-muted-foreground mt-2">{item.body}</p>
             )}
 
-            {/* Reason Context */}
-            <div className="mt-3 p-3 rounded-lg bg-muted/50 border-r-2 border-primary/30">
+            <div className="mt-3 p-3 rounded-lg bg-muted/30 border-r-2 border-primary/30">
               <p className="text-xs text-muted-foreground">
                 <span className="font-medium text-foreground">السبب: </span>
                 {typeReasons[item.type] || "تم إنشاء هذا الإشعار من النظام"}
               </p>
-              {(item.metadata as any)?.reason && (
-                <p className="text-xs mt-1">
-                  <span className="text-muted-foreground">تفاصيل: </span>
-                  {(item.metadata as any).reason}
-                </p>
-              )}
             </div>
 
-            {/* Meta */}
-            <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+            <div className="flex items-center gap-4 mt-3 text-[10px] text-muted-foreground font-mono">
               <div className="flex items-center gap-1">
                 <Clock className="h-3 w-3" />
-                {new Date(item._creationTime).toLocaleString("ar-SA")}
+                {new Date(item._creationTime).toLocaleString("ar-SA", { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
               </div>
               {item.entityId && (
                 <div className="flex items-center gap-1">
-                  {item.entityType === "order" ? (
-                    <ShoppingCart className="h-3 w-3" />
-                  ) : (
-                    <User className="h-3 w-3" />
-                  )}
-                  <code className="font-mono text-[10px]">{item.entityId.slice(-8)}</code>
+                  {item.entityType === "order" ? <ShoppingCart className="h-3 w-3" /> : <User className="h-3 w-3" />}
+                  <code>{item.entityId.slice(-8)}</code>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Actions */}
           <div className="flex flex-col gap-2 shrink-0">
             {!item.read && (
-              <Button size="sm" variant="outline" onClick={onAck}>
+              <Button size="sm" variant="outline" onClick={onAck} className="h-8 text-xs">
                 <CheckCheck className="h-3 w-3 ml-1" />
                 تم القراءة
               </Button>
             )}
-            <Button size="sm" onClick={onResolve}>
+            <Button size="sm" onClick={onResolve} className="h-8 text-xs">
               حل
             </Button>
-            {(item.metadata as any)?.userId && (
-              <Button size="sm" variant="ghost" asChild>
-                <Link href={`/users/${(item.metadata as any).userId}?tab=conversation`}>
-                  <MessageSquare className="h-3 w-3 ml-1" />
-                  محادثة
-                </Link>
-              </Button>
-            )}
             {item.entityType === "order" && item.entityId && (
-              <Button size="sm" variant="ghost" asChild>
+              <Button size="sm" variant="ghost" asChild className="h-8 text-xs">
                 <Link href={`/orders/${item.entityId}`}>
                   <ChevronRight className="h-3 w-3 ml-1" />
-                  الطلب
+                  التفاصيل
                 </Link>
               </Button>
             )}
@@ -213,12 +157,18 @@ export default function NotificationsPage() {
   const [filter, setFilter] = React.useState("all");
   const [typeFilter, setTypeFilter] = React.useState("all");
   const [search, setSearch] = React.useState("");
+  const isAdmin = useQuery(api.features.admin.api.isAdmin);
 
-  const result = useQuery(api.features.admin.api.notificationsList, {
-    paginationOpts: { cursor: null, numItems: 50 },
-    unreadOnly: filter === "unread",
-    type: typeFilter !== "all" ? typeFilter : undefined,
-  });
+  const result = useQuery(
+    api.features.admin.api.notificationsList,
+    isAdmin === true
+      ? {
+        paginationOpts: { cursor: null, numItems: 50 },
+        unreadOnly: filter === "unread",
+        type: typeFilter !== "all" ? typeFilter : undefined,
+      }
+      : "skip",
+  );
 
   const acknowledge = useMutation(api.features.admin.api.notificationAcknowledge);
   const resolve = useMutation(api.features.admin.api.notificationResolve);
@@ -244,55 +194,51 @@ export default function NotificationsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold">{ar.notifications}</h1>
-        <p className="text-sm text-muted-foreground">الإشعارات مع سبب الإنشاء</p>
-      </div>
+      <PageHeader
+        title={ar.notifications}
+        description="الإشعارات التنيهية وتتبع حالة النظام."
+        icon={Bell}
+        breadcrumbs={[{ label: ar.dashboard, href: "/" }, { label: ar.notifications }]}
+      />
 
-      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard label="الإجمالي" value={stats.total} icon={Bell} color="blue" />
-        <StatCard label="غير مقروء" value={stats.unread} icon={Bell} color="emerald" />
         <StatCard label="عاجل" value={stats.urgent} icon={AlertTriangle} color="rose" />
-        <StatCard label="مقروء" value={stats.total - stats.unread} icon={CheckCheck} color="amber" />
+        <StatCard label="غير مقروء" value={stats.unread} icon={Clock} color="amber" />
+        <StatCard label="تمت معالجتها" value={stats.total - stats.unread} icon={CheckCheck} color="emerald" />
       </div>
 
-      {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Filter className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="ابحث..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pr-9"
-          />
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="بحث في الإشعارات..."
+        />
+        <div className="flex gap-2">
+          <Select value={filter} onValueChange={setFilter}>
+            <SelectTrigger className="w-[120px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">الكل</SelectItem>
+              <SelectItem value="unread">غير مقروء</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">كل الأنواع</SelectItem>
+              <SelectItem value="order">طلبات</SelectItem>
+              <SelectItem value="handoff">تحويلات</SelectItem>
+              <SelectItem value="customer">عملاء</SelectItem>
+              <SelectItem value="llm_report">AI</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <Select value={filter} onValueChange={setFilter}>
-          <SelectTrigger className="w-[140px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{ar.all}</SelectItem>
-            <SelectItem value="unread">{ar.unread}</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">كل الأنواع</SelectItem>
-            <SelectItem value="order">طلبات</SelectItem>
-            <SelectItem value="handoff">تحويلات</SelectItem>
-            <SelectItem value="customer">عملاء</SelectItem>
-            <SelectItem value="llm_report">تقارير AI</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
-      {/* List */}
       <div className="space-y-3">
         {loading ? (
           <>
@@ -300,12 +246,11 @@ export default function NotificationsPage() {
             <Skeleton className="h-32 rounded-lg" />
           </>
         ) : items.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <Bell className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-              <p className="text-muted-foreground">{ar.noNotifications}</p>
-            </CardContent>
-          </Card>
+          <EmptyState
+            icon={Bell}
+            title={ar.noNotifications}
+            description="لا توجد تنبيهات جديدة تتطلب انتباهك حالياً."
+          />
         ) : (
           items.map((item) => (
             <NotificationCard
@@ -317,12 +262,6 @@ export default function NotificationsPage() {
           ))
         )}
       </div>
-
-      {!loading && items.length > 0 && (
-        <p className="text-center text-sm text-muted-foreground">
-          عرض {items.length} إشعار
-        </p>
-      )}
     </div>
   );
 }

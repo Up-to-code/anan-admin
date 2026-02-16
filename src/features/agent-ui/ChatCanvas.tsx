@@ -1,29 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { ArrowDown, Bot } from "lucide-react";
+import { ar } from "@/lib/ar";
+import { Button } from "@/components/ui/button";
 import type { AgentMessage } from "./types";
 import { MessageBubbleHuman } from "./MessageBubbleHuman";
 import { MessageBubbleAgent } from "./MessageBubbleAgent";
 import { Composer } from "./Composer";
-import { SearchTracePanel, parseSearchTrace } from "./SearchTracePanel";
+import { ThinkingIndicator } from "@/components/chat/ThinkingIndicator";
+import { Separator } from "@/components/ui/separator";
 
-const STARTER_PROMPTS = [
+const SUGGESTED_PROMPTS = [
   "أنشئ عقارا جديدا من هذا الوصف",
   "أضف بنكا جديدا مع البيانات الأساسية والشعار",
-  "راجع الإجراءات المعلقة وأخبرني بما يحتاج تأكيد",
   "اقترح ثلاث عقارات مناسبة لعائلة في الرياض",
-];
-
-function SearchTracePanelWrapper({ content }: { content: string }) {
-  const trace = parseSearchTrace(content);
-  if (!trace) return null;
-  return (
-    <div className="px-4 pb-2">
-      <SearchTracePanel trace={trace} />
-    </div>
-  );
-}
+  "راجع الإجراءات المعلقة وأخبرني بما يحتاج تأكيد",
+] as const;
 
 export function ChatCanvas({
   messages,
@@ -31,6 +24,7 @@ export function ChatCanvas({
   isSending,
   onSend,
   onSlashCommand,
+  onOpenPendingActions,
   bottomRef,
 }: {
   messages: AgentMessage[];
@@ -41,6 +35,7 @@ export function ChatCanvas({
     command: "rewrite" | "formal" | "summarize",
     text: string,
   ) => Promise<string>;
+  onOpenPendingActions?: () => void;
   bottomRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -77,68 +72,100 @@ export function ChatCanvas({
   }, [messages.length, isThinking, isNearBottom, scrollToBottom]);
 
   return (
-    <>
+    <div className="flex-1 flex flex-col h-full min-h-0 relative">
+      {/* Header - clean chat layout (Zola-inspired) */}
+      <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
+        <div className="flex items-center justify-between px-4 md:px-6 py-3">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Bot size={18} className="text-primary" />
+            </div>
+            <span className="font-semibold text-base">{ar.agentName}</span>
+          </div>
+        </div>
+        <Separator />
+      </header>
+
       <div
-        className="agent-scroll agent-chat-scroll"
+        className="flex-1 min-h-0 overflow-y-auto px-4 md:px-0 scroll-smooth"
         ref={scrollRef}
         onScroll={updateNearBottom}
       >
-        <div className="agent-chat-wrap">
-          {messages.length === 0 ? (
-            <div className="agent-empty-state">
-              <div className="agent-empty-title">كيف أقدر أساعدك اليوم؟</div>
-              <div className="agent-empty-subtitle">
-                اطلب من الوكيل إنشاء كيانات جديدة أو تجهيز إجراءات أو تقديم
-                توصيات.
+        {messages.length === 0 ? (
+          <div className="w-full max-w-3xl mx-auto flex flex-col items-center justify-center min-h-[60vh] gap-10 p-6 animate-in fade-in duration-300">
+            <div className="flex flex-col items-center gap-4 text-center max-w-xl">
+              <div className="h-14 w-14 rounded-xl bg-primary/10 flex items-center justify-center">
+                <Bot size={28} className="text-primary" />
               </div>
-              <div className="agent-starter-grid">
-                {STARTER_PROMPTS.map((prompt) => (
-                  <button
-                    key={prompt}
-                    className="agent-starter-btn"
-                    onClick={() => onSend(prompt)}
-                    disabled={isSending || isThinking}
-                  >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
+              <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">
+                {ar.agentWelcomeDefault}
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                {ar.agentGreetingDefault}
+              </p>
             </div>
-          ) : (
-            <div className="agent-message-list">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
+              {SUGGESTED_PROMPTS.map((prompt, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => onSend(prompt)}
+                  className="flex items-center gap-3 p-4 rounded-xl border border-border bg-card hover:bg-accent/50 hover:border-primary/30 transition-colors text-right"
+                >
+                  <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                    <Bot size={16} className="text-primary" />
+                  </div>
+                  <span className="text-sm font-medium text-foreground line-clamp-2">{prompt}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="w-full max-w-3xl mx-auto py-8 flex flex-col gap-6 pb-32">
+            <div className="flex flex-col gap-8 pb-32">
               {messages.map((msg) =>
                 msg.isAi ? (
-                  <div key={msg.id}>
-                    <MessageBubbleAgent content={msg.content} />
-                    {msg.content && (
-                      <SearchTracePanelWrapper content={msg.content} />
-                    )}
+                  <div key={msg.id} className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <MessageBubbleAgent content={msg.content} status={msg.status} />
                   </div>
                 ) : (
-                  <MessageBubbleHuman key={msg.id} content={msg.content} />
+                  <div key={msg.id} className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <MessageBubbleHuman content={msg.content} />
+                  </div>
                 ),
               )}
               {isThinking ? (
-                <div className="agent-bubble-row ai">
-                  <span className="agent-avatar ai">
-                    <Loader2 size={15} className="animate-spin" />
-                  </span>
-                  <div className="agent-bubble ai">جاري التفكير...</div>
+                <div className="flex gap-3 items-center px-4">
+                  <ThinkingIndicator />
                 </div>
               ) : null}
               <div ref={bottomRef} />
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
-      <div className="agent-composer-wrap">
-        <Composer
-          isLoading={isSending || isThinking}
-          onSend={onSend}
-          onSlashCommand={onSlashCommand}
-        />
+      {!isNearBottom && messages.length > 0 ? (
+        <Button
+          size="icon"
+          variant="secondary"
+          className="absolute bottom-32 left-1/2 -translate-x-1/2 rounded-full shadow-lg z-10 h-9 w-9 bg-primary text-primary-foreground hover:bg-primary/90"
+          onClick={() => scrollToBottom("smooth")}
+          aria-label="Scroll to bottom"
+        >
+          <ArrowDown size={16} />
+        </Button>
+      ) : null}
+
+      <div className="absolute bottom-6 left-0 right-0 px-4">
+        <div className="max-w-3xl mx-auto">
+          <Composer
+            isLoading={isSending || isThinking}
+            onSend={onSend}
+            onSlashCommand={onSlashCommand}
+            onOpenPendingActions={onOpenPendingActions}
+          />
+        </div>
       </div>
-    </>
+    </div>
   );
 }

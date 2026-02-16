@@ -6,10 +6,14 @@ export type AgentThread = {
   title?: string;
 };
 
+export type AgentMessageStatus = "streaming" | "finished" | "aborted";
+
 export type AgentMessage = {
   id: string;
   content: string;
   isAi: boolean;
+  status?: AgentMessageStatus;
+  parts?: unknown[];
 };
 
 export type PendingAction = {

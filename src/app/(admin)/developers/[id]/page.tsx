@@ -36,6 +36,7 @@ import {
   Bath,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PageHeader, StatCard } from "@/components/admin/ui";
 
 export default function DeveloperDetailPage() {
   const params = useParams();
@@ -81,109 +82,63 @@ export default function DeveloperDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Button variant="ghost" size="sm" asChild>
-        <Link href="/developers" className="gap-1">
-          <ArrowRight className="h-4 w-4" />
-          {ar.developers}
-        </Link>
-      </Button>
-
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted">
-            <Building2 className="h-6 w-6 text-muted-foreground" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold">{developer.name}</h1>
-              <Badge className={cn("border-0", statusColor)}>
-                {statusLabel}
-              </Badge>
-            </div>
-            <p className="text-sm text-muted-foreground font-mono">
-              {developer.slug}
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          {developer.website && (
-            <Button variant="outline" size="sm" asChild>
-              <a
-                href={developer.website}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <ExternalLink className="h-3.5 w-3.5 ml-1" />
-                {ar.website}
-              </a>
+      <PageHeader
+        title={developer.name}
+        description={developer.slug}
+        icon={Building2}
+        breadcrumbs={[
+          { label: ar.developers, href: "/developers" },
+          { label: developer.name },
+        ]}
+        action={
+          <div className="flex gap-2">
+            {developer.website && (
+              <Button variant="outline" size="sm" asChild>
+                <a
+                  href={developer.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ExternalLink className="h-3.5 w-3.5 ml-1" />
+                  {ar.website}
+                </a>
+              </Button>
+            )}
+            <Button size="sm" asChild>
+              <Link href={`/developers/${developer._id}/edit`}>
+                <Pencil className="h-3.5 w-3.5 ml-1" />
+                {ar.edit}
+              </Link>
             </Button>
-          )}
-          <Button size="sm" asChild>
-            <Link href={`/developers/${developer._id}/edit`}>
-              <Pencil className="h-3.5 w-3.5 ml-1" />
-              {ar.edit}
-            </Link>
-          </Button>
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-blue-500/10">
-                <Home className="h-4 w-4 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{properties?.length || 0}</p>
-                <p className="text-xs text-muted-foreground">{ar.properties}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-emerald-500/10">
-                <Home className="h-4 w-4 text-emerald-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{availableCount}</p>
-                <p className="text-xs text-muted-foreground">{ar.available}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-rose-500/10">
-                <Home className="h-4 w-4 text-rose-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{soldCount}</p>
-                <p className="text-xs text-muted-foreground">{ar.sold}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-muted">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">
-                  {new Date(developer._creationTime).toLocaleDateString(
-                    "ar-SA",
-                  )}
-                </p>
-                <p className="text-xs text-muted-foreground">{ar.createdAt}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard
+          label={ar.properties}
+          value={properties?.length || 0}
+          icon={Home}
+          color="blue"
+        />
+        <StatCard
+          label={ar.available}
+          value={availableCount}
+          icon={Home}
+          color="emerald"
+        />
+        <StatCard
+          label={ar.sold}
+          value={soldCount}
+          icon={Home}
+          color="rose"
+        />
+        <StatCard
+          label={ar.createdAt}
+          value={new Date(developer._creationTime).toLocaleDateString("ar-SA")}
+          icon={Calendar}
+          color="blue"
+        />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -310,11 +265,11 @@ export default function DeveloperDetailPage() {
                         variant="outline"
                         className={cn(
                           property.status === "available" &&
-                            "border-emerald-500 text-emerald-600",
+                          "border-emerald-500 text-emerald-600",
                           property.status === "sold" &&
-                            "border-rose-500 text-rose-600",
+                          "border-rose-500 text-rose-600",
                           property.status === "reserved" &&
-                            "border-amber-500 text-amber-600",
+                          "border-amber-500 text-amber-600",
                         )}
                       >
                         {property.status === "available"

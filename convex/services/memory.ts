@@ -2,8 +2,9 @@
  * Agent Memory Service - Cross-session persistence for user preferences, facts, and interactions.
  * Implements three-tier memory architecture: working (session), long-term (preferences), knowledge graph.
  */
-import { internalMutation, mutation, query } from "../_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "../_generated/server";
 import { v } from "convex/values";
+import { optionalAuth, requireAdmin } from "../lib/auth";
 
 export type MemoryType =
   | "preference"
@@ -51,6 +52,10 @@ export const store = mutation({
   },
   returns: v.id("agentMemory"),
   handler: async (ctx, args) => {
+    const authUserId = await optionalAuth(ctx);
+    if (authUserId !== args.userId) {
+      await requireAdmin(ctx);
+    }
     const now = Date.now();
     const confidence = args.confidence ?? 0.8;
     const expiresAt =
@@ -165,6 +170,10 @@ export const retrieve = query({
   },
   returns: v.array(v.any()),
   handler: async (ctx, { userId, memoryType, limit = 20 }) => {
+    const authUserId = await optionalAuth(ctx);
+    if (authUserId !== userId) {
+      await requireAdmin(ctx);
+    }
     const now = Date.now();
     const queryResult = ctx.db
       .query("agentMemory")
@@ -187,6 +196,10 @@ export const getByKey = query({
   },
   returns: v.union(v.null(), v.any()),
   handler: async (ctx, { userId, key }) => {
+    const authUserId = await optionalAuth(ctx);
+    if (authUserId !== userId) {
+      await requireAdmin(ctx);
+    }
     const now = Date.now();
     const memory = await ctx.db
       .query("agentMemory")
@@ -200,6 +213,81 @@ export const getByKey = query({
 });
 
 export const getRelevantContext = query({
+  args: {
+    userId: v.string(),
+    query: v.string(),
+    limit: v.optional(v.number()),
+  },
+  returns: v.object({
+    preferences: v.array(v.any()),
+    constraints: v.array(v.any()),
+    recentInteractions: v.array(v.any()),
+    summary: v.string(),
+  }),
+  handler: async (ctx, { userId, limit = 10 }) => {
+    const authUserId = await optionalAuth(ctx);
+    if (authUserId !== userId) {
+      try {
+        await requireAdmin(ctx);
+      } catch {
+        // No auth (e.g. query run from action context): return empty, do not leak data
+        return {
+          preferences: [],
+          constraints: [],
+          recentInteractions: [],
+          summary: "",
+        };
+      }
+    }
+    const now = Date.now();
+
+    const preferences = await ctx.db
+      .query("agentMemory")
+      .withIndex("userId_and_memoryType", (q) =>
+        q.eq("userId", userId).eq("memoryType", "preference"),
+      )
+      .collect()
+      .then((results) =>
+        results
+          .filter((r) => !r.expiresAt || r.expiresAt > now)
+          .slice(0, limit),
+      );
+
+    const constraints = await ctx.db
+      .query("agentMemory")
+      .withIndex("userId_and_memoryType", (q) =>
+        q.eq("userId", userId).eq("memoryType", "constraint"),
+      )
+      .collect()
+      .then((results) =>
+        results
+          .filter((r) => !r.expiresAt || r.expiresAt > now)
+          .slice(0, limit),
+      );
+
+    const interactions = await ctx.db
+      .query("agentMemory")
+      .withIndex("userId_and_memoryType", (q) =>
+        q.eq("userId", userId).eq("memoryType", "interaction"),
+      )
+      .order("desc")
+      .collect()
+      .then((results) =>
+        results.filter((r) => !r.expiresAt || r.expiresAt > now).slice(0, 5),
+      );
+
+    const summary = buildMemorySummary(preferences, constraints, interactions);
+
+    return {
+      preferences,
+      constraints,
+      recentInteractions: interactions,
+      summary,
+    };
+  },
+});
+
+export const getRelevantContextInternal = internalQuery({
   args: {
     userId: v.string(),
     query: v.string(),
@@ -280,6 +368,10 @@ export const storeInteraction = mutation({
   },
   returns: v.id("agentMemory"),
   handler: async (ctx, args) => {
+    const authUserId = await optionalAuth(ctx);
+    if (authUserId !== args.userId) {
+      await requireAdmin(ctx);
+    }
     const key = `interaction_${args.entityType ?? "general"}_${args.entityId ?? Date.now()}`;
     const value = JSON.stringify({
       action: args.action,
@@ -316,6 +408,12 @@ export const storeEntityRelation = mutation({
   },
   returns: v.id("entityRelations"),
   handler: async (ctx, args) => {
+    if (args.userId != null) {
+      const authUserId = await optionalAuth(ctx);
+      if (authUserId !== args.userId) {
+        await requireAdmin(ctx);
+      }
+    }
     const existing = await ctx.db
       .query("entityRelations")
       .withIndex("from_and_relation", (q) =>

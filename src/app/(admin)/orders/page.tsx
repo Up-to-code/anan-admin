@@ -51,6 +51,7 @@ import {
   ORDER_STATUS_LIST,
   type OrderStatus,
 } from "@/lib/status-config";
+import { StatCard } from "@/components/admin/ui";
 
 // ============================================
 // DRAGGABLE ORDER CARD
@@ -66,9 +67,9 @@ function DraggableOrderCard({ order }: { order: any }) {
 
   const style = transform
     ? {
-        transform: CSS.Translate.toString(transform),
-        zIndex: isDragging ? 50 : undefined,
-      }
+      transform: CSS.Translate.toString(transform),
+      zIndex: isDragging ? 50 : undefined,
+    }
     : undefined;
 
   return (
@@ -253,17 +254,27 @@ export default function OrdersPage() {
   const [search, setSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<string>("all");
   const [activeId, setActiveId] = React.useState<string | null>(null);
+  const isAdmin = useQuery(api.features.admin.api.isAdmin);
 
-  const orders = useQuery(api.features.admin.api.listOrders, {
-    limit: 100,
-    status: statusFilter === "all" ? undefined : (statusFilter as any),
-  }) as any[] | undefined;
+  const orders = useQuery(
+    api.features.admin.api.listOrders,
+    isAdmin === true
+      ? {
+        limit: 100,
+        status: statusFilter === "all" ? undefined : (statusFilter as any),
+      }
+      : "skip",
+  ) as any[] | undefined;
 
-  const board = useQuery(api.features.admin.api.pipelineBoard, {
-    limitPerStage: 30,
-  }) as any[] | undefined;
+  const board = useQuery(
+    api.features.admin.api.pipelineBoard,
+    isAdmin === true ? { limitPerStage: 30 } : "skip",
+  ) as any[] | undefined;
 
-  const summary = useQuery(api.features.admin.api.pipelineSummary);
+  const summary = useQuery(
+    api.features.admin.api.pipelineSummary,
+    isAdmin === true ? undefined : "skip",
+  );
   const updateOrder = useMutation(api.features.admin.api.orderUpdate);
 
   const loading = orders === undefined || board === undefined;
@@ -390,77 +401,36 @@ export default function OrdersPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-blue-500" />
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground">الطلبات</p>
-                <p className="text-2xl font-bold">{stats.total}</p>
-              </div>
-              <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-600">
-                <ShoppingCart className="h-4 w-4" />
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              {summary?.unassigned ?? 0} غير مسند
-            </p>
-          </CardContent>
-        </Card>
+        <StatCard
+          label="الطلبات"
+          value={stats.total}
+          icon={ShoppingCart}
+          color="blue"
+          description={`${summary?.unassigned ?? 0} غير مسند`}
+        />
 
-        <Card className="relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-amber-500" />
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground">قديمة</p>
-                <p className="text-2xl font-bold">{stats.stale}</p>
-              </div>
-              <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-600">
-                <AlertTriangle className="h-4 w-4" />
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">تحتاج متابعة</p>
-          </CardContent>
-        </Card>
+        <StatCard
+          label="قديمة"
+          value={stats.stale}
+          icon={AlertTriangle}
+          color="amber"
+          description="تحتاج متابعة"
+        />
 
-        <Card className="relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-emerald-500" />
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground">مبيعات</p>
-                <p className="text-2xl font-bold">{stats.won}</p>
-              </div>
-              <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-600">
-                <CheckCircle className="h-4 w-4" />
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">{stats.conversion}% تحويل</p>
-          </CardContent>
-        </Card>
+        <StatCard
+          label="مبيعات"
+          value={stats.won}
+          icon={CheckCircle}
+          color="emerald"
+          description={`${stats.conversion}% تحويل`}
+        />
 
-        <Card className="relative overflow-hidden">
-          <div className={cn(
-            "absolute top-0 left-0 right-0 h-1",
-            stats.conversion >= 20 ? "bg-emerald-500" : stats.conversion >= 10 ? "bg-amber-500" : "bg-rose-500"
-          )} />
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground">التحويل</p>
-                <p className="text-2xl font-bold">{Math.round((summary?.conversionRate ?? 0) * 100)}%</p>
-              </div>
-              <div className={cn(
-                "p-2.5 rounded-xl",
-                stats.conversion >= 20 ? "bg-emerald-500/10 text-emerald-600" :
-                stats.conversion >= 10 ? "bg-amber-500/10 text-amber-600" : "bg-rose-500/10 text-rose-600"
-              )}>
-                <Target className="h-4 w-4" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard
+          label="التحويل"
+          value={`${Math.round((summary?.conversionRate ?? 0) * 100)}%`}
+          icon={Target}
+          color={stats.conversion >= 20 ? "emerald" : stats.conversion >= 10 ? "amber" : "rose"}
+        />
       </div>
 
       {/* Filters */}

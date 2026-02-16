@@ -2,10 +2,11 @@
  * Content service - knowledge pages, prompts, handoffs.
  */
 
-import { mutation, query } from "../_generated/server";
+import { internalMutation, mutation, query } from "../_generated/server";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import { api, internal } from "../_generated/api";
+import { optionalAuth, requireAdmin } from "../lib/auth";
 import { buildSalesSummaryFields, extractTopics } from "../domain/order";
 
 const PROMPT_KEYS = ["system", "realEstate", "tools"] as const;
@@ -57,17 +58,19 @@ export const listHandoffs = query({
   },
 });
 
-/** Create handoff request. */
-export const create = mutation({
-  args: {
-    userId: v.string(),
-    intent: v.string(),
-    aiHandoffReason: v.optional(v.string()),
-    customerNeedsSummary: v.optional(v.string()),
-    salesTalkingPoints: v.optional(v.string()),
-    recommendationSummary: v.optional(v.string()),
-    threadId: v.optional(v.string()),
-  },
+const createHandoffArgs = {
+  userId: v.string(),
+  intent: v.string(),
+  aiHandoffReason: v.optional(v.string()),
+  customerNeedsSummary: v.optional(v.string()),
+  salesTalkingPoints: v.optional(v.string()),
+  recommendationSummary: v.optional(v.string()),
+  threadId: v.optional(v.string()),
+};
+
+/** Internal: create handoff (no auth). Used by agent. */
+export const createHandoffInternal = internalMutation({
+  args: createHandoffArgs,
   handler: async (
     ctx,
     {
@@ -80,6 +83,98 @@ export const create = mutation({
       threadId,
     }
   ) => {
+    const summary = buildSalesSummaryFields({
+      intent,
+      aiHandoffReason,
+      customerNeedsSummary,
+      salesTalkingPoints,
+      recommendationSummary,
+    });
+    const handoffId = await ctx.db.insert("humanHandoffs", {
+      userId,
+      intent,
+      status: "pending",
+      aiHandoffReason: summary.aiHandoffReason,
+      customerNeedsSummary: summary.customerNeedsSummary,
+      salesTalkingPoints: summary.salesTalkingPoints,
+      recommendationSummary: summary.recommendationSummary,
+      threadId,
+    });
+    const type = intent === "ready_to_buy" ? "property" : "loan";
+    const serviceCategory =
+      intent === "ready_to_buy" ? "buy_property" : intent === "ready_to_sell" ? "sell_property" : "other";
+
+    await ctx.runMutation(api.admin.orders.createDraftOrderFromAgent, {
+      userId,
+      type,
+      confidenceScore: 0.8,
+      intent,
+      sourceChannel: "whatsapp",
+      serviceCategory,
+      handoffId,
+      notes: "Auto-created from human handoff request.",
+      threadId,
+      aiHandoffReason: summary.aiHandoffReason,
+      customerNeedsSummary: summary.customerNeedsSummary,
+      salesTalkingPoints: summary.salesTalkingPoints,
+      recommendationSummary: summary.recommendationSummary,
+    });
+
+    await ctx.runMutation(internal.services.notifications.createSalesNotification, {
+      userId: "sales-team",
+      title: "New human handoff request",
+      body:
+        summary.aiHandoffReason ??
+        summary.customerNeedsSummary ??
+        `A user requested human handoff with intent: ${intent}.`,
+      type: "handoff",
+      audience: "sales",
+      entityType: "handoff",
+      entityId: String(handoffId),
+      linkId: String(handoffId),
+      priority: "high",
+      actionRequired: true,
+      status: "new",
+      metadata: {
+        handoffId,
+        userId,
+        intent,
+        threadId,
+        discussedTopics: extractTopics({
+          intent,
+          customerNeedsSummary: summary.customerNeedsSummary,
+          salesTalkingPoints: summary.salesTalkingPoints,
+        }),
+        aiHandoffReason: summary.aiHandoffReason,
+        customerNeedsSummary: summary.customerNeedsSummary,
+        salesTalkingPoints: summary.salesTalkingPoints,
+        recommendationSummary: summary.recommendationSummary,
+      },
+    });
+
+    return handoffId;
+  },
+});
+
+/** Create handoff request. */
+export const create = mutation({
+  args: createHandoffArgs,
+  handler: async (
+    ctx,
+    {
+      userId,
+      intent,
+      aiHandoffReason,
+      customerNeedsSummary,
+      salesTalkingPoints,
+      recommendationSummary,
+      threadId,
+    }
+  ) => {
+    const authUserId = await optionalAuth(ctx);
+    if (authUserId !== userId) {
+      await requireAdmin(ctx);
+    }
     const summary = buildSalesSummaryFields({
       intent,
       aiHandoffReason,

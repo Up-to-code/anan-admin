@@ -62,14 +62,14 @@ const navGroups: NavGroupConfig[] = [
     ],
   },
   {
-    title: "الفريق والعملاء",
+    title: "فريق العمل",
     items: [
       { title: ar.team, href: "/team", icon: UsersRound },
       { title: ar.users, href: "/users", icon: Users },
     ],
   },
   {
-    title: "المبيعات",
+    title: "المبيعات والطلبات",
     items: [
       {
         title: ar.pipelineOrders,
@@ -86,7 +86,7 @@ const navGroups: NavGroupConfig[] = [
     ],
   },
   {
-    title: "الكيانات",
+    title: "إدارة البيانات",
     items: [
       { title: ar.developers, href: "/developers", icon: Building2 },
       { title: ar.properties, href: "/properties", icon: Landmark },
@@ -95,7 +95,7 @@ const navGroups: NavGroupConfig[] = [
     ],
   },
   {
-    title: "المحتوى",
+    title: "المحتوى والمراجعات",
     items: [
       { title: ar.prompts, href: "/prompts", icon: Sparkles },
       { title: ar.knowledge, href: "/knowledge", icon: BookOpen },
@@ -104,7 +104,7 @@ const navGroups: NavGroupConfig[] = [
     ],
   },
   {
-    title: "النظام",
+    title: "الإعدادات والنظام",
     items: [
       { title: "تحليلات AI", href: "/analytics/llm", icon: BarChart3 },
       { title: ar.settings, href: "/settings", icon: Cog },
@@ -178,11 +178,29 @@ function NavItem({
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { collapsed } = useSidebar();
+  const isAdmin = useQuery(api.features.admin.api.isAdmin);
   const unreadCount = useQuery(
     api.features.admin.api.notificationsUnreadCount,
-    {},
+    isAdmin === true ? {} : "skip",
   );
-  const summary = useQuery(api.features.admin.api.pipelineSummary);
+  const summary = useQuery(
+    api.features.admin.api.pipelineSummary,
+    isAdmin === true ? undefined : "skip",
+  );
+
+  const [expandedGroups, setExpandedGroups] = React.useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") return { "الرئيسية": true };
+    const saved = localStorage.getItem("sidebar_expanded_groups");
+    return saved ? JSON.parse(saved) : { "الرئيسية": true };
+  });
+
+  React.useEffect(() => {
+    localStorage.setItem("sidebar_expanded_groups", JSON.stringify(expandedGroups));
+  }, [expandedGroups]);
+
+  const toggleGroup = (title: string) => {
+    setExpandedGroups(prev => ({ ...prev, [title]: !prev[title] }));
+  };
 
   const getBadgeCount = (badge?: string) => {
     if (badge === "notifications") return unreadCount;
@@ -199,43 +217,66 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         )}
       >
         <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-lg shadow-primary/20">
             <Zap className="h-4 w-4" />
           </div>
-          {!collapsed && <span className="font-bold text-lg">عنان</span>}
+          {!collapsed && <span className="font-bold text-lg tracking-tight">عنان</span>}
         </Link>
       </div>
 
       <ScrollArea className="flex-1 px-3 py-4">
         <TooltipProvider>
-          <nav className="space-y-4">
-            {navGroups.map((group) => (
-              <div key={group.title}>
-                {!collapsed && (
-                  <p className="mb-2 px-3 text-xs font-medium text-muted-foreground">
-                    {group.title}
-                  </p>
-                )}
-                <div className="space-y-1">
-                  {group.items.map((item) => (
-                    <NavItem
-                      key={item.href}
-                      item={item}
-                      isActive={
-                        item.href === "/"
-                          ? pathname === "/"
-                          : item.href
-                            ? pathname.startsWith(item.href)
-                            : false
-                      }
-                      badgeCount={getBadgeCount(item.badge)}
-                      collapsed={collapsed}
-                      onClick={onNavigate}
-                    />
-                  ))}
+          <nav className="space-y-2">
+            {navGroups.map((group) => {
+              const isExpanded = expandedGroups[group.title] ?? false;
+              const hasActiveChild = group.items.some(item =>
+                item.href === "/" ? pathname === "/" : item.href ? pathname.startsWith(item.href) : false
+              );
+
+              return (
+                <div key={group.title} className="space-y-1">
+                  {!collapsed ? (
+                    <button
+                      onClick={() => toggleGroup(group.title)}
+                      className={cn(
+                        "flex w-full items-center justify-between px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 hover:text-foreground transition-colors group",
+                        hasActiveChild && !isExpanded && "text-primary/70"
+                      )}
+                    >
+                      <span>{group.title}</span>
+                      <ChevronRight className={cn(
+                        "h-3 w-3 transition-transform duration-200",
+                        isExpanded && "rotate-90"
+                      )} />
+                    </button>
+                  ) : (
+                    <div className="h-px bg-muted mx-2 my-4 opacity-50" />
+                  )}
+
+                  <div className={cn(
+                    "space-y-1 overflow-hidden transition-all duration-300",
+                    collapsed ? "block" : isExpanded ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"
+                  )}>
+                    {group.items.map((item) => (
+                      <NavItem
+                        key={item.href}
+                        item={item}
+                        isActive={
+                          item.href === "/"
+                            ? pathname === "/"
+                            : item.href
+                              ? pathname.startsWith(item.href)
+                              : false
+                        }
+                        badgeCount={getBadgeCount(item.badge)}
+                        collapsed={collapsed}
+                        onClick={onNavigate}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </nav>
         </TooltipProvider>
       </ScrollArea>

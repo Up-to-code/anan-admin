@@ -3,7 +3,12 @@
  * Merged from features/users/profiles and features/users/favorites.
  */
 
-import { mutation, query, internalQuery } from "../_generated/server";
+import {
+  mutation,
+  query,
+  internalMutation,
+  internalQuery,
+} from "../_generated/server";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import {
@@ -92,28 +97,30 @@ export const ensureWhatsAppUser = mutation({
   },
 });
 
-/** Upsert profile. Used by agent tool. */
-export const upsert = mutation({
-  args: {
-    userId: v.string(),
-    name: v.optional(v.string()),
-    salary: v.optional(v.number()),
-    employment: v.optional(v.string()),
-    employer: v.optional(v.string()),
-    firstTimeBuyer: v.optional(v.boolean()),
-    kids: v.optional(v.number()),
-    minBeds: v.optional(v.number()),
-    maxBudget: v.optional(v.number()),
-    preferredLocation: v.optional(v.string()),
-    preferredFloor: v.optional(v.string()),
-    needsParking: v.optional(v.boolean()),
-    propertyType: v.optional(v.string()),
-    finishes: v.optional(v.string()),
-    notes: v.optional(v.string()),
-    planType: v.optional(v.union(v.literal("free"), v.literal("paid"))),
-    planExpiresAt: v.optional(v.number()),
-    chatLimit: v.optional(v.number()),
-  },
+const upsertArgs = {
+  userId: v.string(),
+  name: v.optional(v.string()),
+  salary: v.optional(v.number()),
+  employment: v.optional(v.string()),
+  employer: v.optional(v.string()),
+  firstTimeBuyer: v.optional(v.boolean()),
+  kids: v.optional(v.number()),
+  minBeds: v.optional(v.number()),
+  maxBudget: v.optional(v.number()),
+  preferredLocation: v.optional(v.string()),
+  preferredFloor: v.optional(v.string()),
+  needsParking: v.optional(v.boolean()),
+  propertyType: v.optional(v.string()),
+  finishes: v.optional(v.string()),
+  notes: v.optional(v.string()),
+  planType: v.optional(v.union(v.literal("free"), v.literal("paid"))),
+  planExpiresAt: v.optional(v.number()),
+  chatLimit: v.optional(v.number()),
+};
+
+/** Internal: upsert profile (no auth). Used by agent. */
+export const upsertInternal = internalMutation({
+  args: upsertArgs,
   returns: v.id("userProfiles"),
   handler: async (ctx, args) => {
     const { userId, ...updates } = args;
@@ -134,22 +141,51 @@ export const upsert = mutation({
   },
 });
 
-/** Log user activity for analytics and usage limits. */
-export const logActivity = mutation({
-  args: {
-    userId: v.string(),
-    action: v.union(
-      v.literal("message_sent"),
-      v.literal("search"),
-      v.literal("order_created"),
-      v.literal("login"),
-      v.literal("property_viewed"),
-    ),
-    channel: v.optional(
-      v.union(v.literal("whatsapp"), v.literal("app"), v.literal("web")),
-    ),
-    metadata: v.optional(v.any()),
+/** Upsert profile. Used by agent tool. */
+export const upsert = mutation({
+  args: upsertArgs,
+  returns: v.id("userProfiles"),
+  handler: async (ctx, args) => {
+    const authUserId = await optionalAuth(ctx);
+    if (authUserId !== args.userId) {
+      await requireAdmin(ctx);
+    }
+    const { userId, ...updates } = args;
+    const existing = await ctx.db
+      .query("userProfiles")
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .first();
+    const patchData = Object.fromEntries(
+      Object.entries(updates).filter(([, v]) => v !== undefined),
+    ) as Record<string, unknown>;
+    if (existing) {
+      if (Object.keys(patchData).length > 0) {
+        await ctx.db.patch(existing._id, patchData);
+      }
+      return existing._id;
+    }
+    return await ctx.db.insert("userProfiles", { userId, ...patchData });
   },
+});
+
+const logActivityArgs = {
+  userId: v.string(),
+  action: v.union(
+    v.literal("message_sent"),
+    v.literal("search"),
+    v.literal("order_created"),
+    v.literal("login"),
+    v.literal("property_viewed"),
+  ),
+  channel: v.optional(
+    v.union(v.literal("whatsapp"), v.literal("app"), v.literal("web")),
+  ),
+  metadata: v.optional(v.any()),
+};
+
+/** Internal: log activity (no auth). Used by agent. */
+export const logActivityInternal = internalMutation({
+  args: logActivityArgs,
   returns: v.id("userActivity"),
   handler: async (ctx, { userId, action, channel, metadata }) => {
     return ctx.db.insert("userActivity", {
@@ -161,14 +197,53 @@ export const logActivity = mutation({
   },
 });
 
-/** Count sent messages for a user within a time window. */
-export const getRecentMessageCount = query({
-  args: {
-    userId: v.string(),
-    sinceMs: v.number(),
+/** Log user activity for analytics and usage limits. */
+export const logActivity = mutation({
+  args: logActivityArgs,
+  returns: v.id("userActivity"),
+  handler: async (ctx, { userId, action, channel, metadata }) => {
+    const authUserId = await optionalAuth(ctx);
+    if (authUserId !== userId) {
+      await requireAdmin(ctx);
+    }
+    return ctx.db.insert("userActivity", {
+      userId,
+      action,
+      channel,
+      metadata,
+    });
   },
+});
+
+const getRecentMessageCountArgs = {
+  userId: v.string(),
+  sinceMs: v.number(),
+};
+
+/** Internal: count sent messages (no auth). Used by agent. */
+export const getRecentMessageCountInternal = internalQuery({
+  args: getRecentMessageCountArgs,
   returns: v.number(),
   handler: async (ctx, { userId, sinceMs }) => {
+    const activities = await ctx.db
+      .query("userActivity")
+      .withIndex("userId_and_action", (q) =>
+        q.eq("userId", userId).eq("action", "message_sent"),
+      )
+      .collect();
+    return activities.filter((item) => item._creationTime >= sinceMs).length;
+  },
+});
+
+/** Count sent messages for a user within a time window. */
+export const getRecentMessageCount = query({
+  args: getRecentMessageCountArgs,
+  returns: v.number(),
+  handler: async (ctx, { userId, sinceMs }) => {
+    const authUserId = await optionalAuth(ctx);
+    if (authUserId !== userId) {
+      await requireAdmin(ctx);
+    }
     const activities = await ctx.db
       .query("userActivity")
       .withIndex("userId_and_action", (q) =>

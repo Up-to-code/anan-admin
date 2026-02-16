@@ -1,27 +1,14 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import { ar } from "@/lib/ar";
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
 import {
   Star,
   MessageSquare,
@@ -30,46 +17,11 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-function StatCard({
-  label,
-  value,
-  icon: Icon,
-  color = "amber",
-}: {
-  label: string;
-  value: string | number;
-  icon?: React.ElementType;
-  color?: "amber" | "emerald" | "blue" | "violet";
-}) {
-  const colorClasses: Record<string, string> = {
-    amber: "bg-amber-500/10 text-amber-600",
-    emerald: "bg-emerald-500/10 text-emerald-600",
-    blue: "bg-blue-500/10 text-blue-600",
-    violet: "bg-violet-500/10 text-violet-600",
-  };
-
-  return (
-    <Card className="relative overflow-hidden">
-      <div
-        className={cn("absolute top-0 left-0 right-0 h-1", `bg-${color}-500`)}
-      />
-      <CardContent className="pt-5 pb-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground">{label}</p>
-            <p className="text-2xl font-bold mt-1">{value}</p>
-          </div>
-          {Icon && (
-            <div className={cn("p-2.5 rounded-xl", colorClasses[color])}>
-              <Icon className="h-4 w-4" />
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+import {
+  PageHeader,
+  StatCard,
+  EmptyState,
+} from "@/components/admin/ui";
 
 function ReviewCard({ review }: { review: any }) {
   return (
@@ -151,25 +103,15 @@ export default function ReviewsPage() {
 
   return (
     <div className="space-y-6">
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink href="/">{ar.dashboard}</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage className="flex items-center gap-2">
-              <Star className="h-4 w-4" />
-              {ar.reviews}
-            </BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-
-      <div>
-        <h1 className="text-xl font-bold">{ar.reviews}</h1>
-        <p className="text-sm text-muted-foreground mt-1">{ar.engagement}</p>
-      </div>
+      <PageHeader
+        title={ar.reviews}
+        description={ar.engagement}
+        icon={Star}
+        breadcrumbs={[
+          { label: ar.dashboard, href: "/" },
+          { label: ar.reviews },
+        ]}
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
@@ -211,17 +153,11 @@ export default function ReviewsPage() {
           ))}
         </div>
       ) : (
-        <Card>
-          <CardContent className="py-16 text-center">
-            <div className="mx-auto w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center mb-4">
-              <Star className="h-6 w-6 text-amber-600" />
-            </div>
-            <p className="text-muted-foreground font-medium">{ar.noReviews}</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              لم يقم أي مستخدم بكتابة تقييم بعد
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Star}
+          title={ar.noReviews}
+          description="لم يقم أي مستخدم بكتابة تقييم بعد"
+        />
       )}
     </div>
   );

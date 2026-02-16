@@ -4,10 +4,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -16,10 +17,10 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { ArrowRight, ChevronRight, type LucideIcon } from "lucide-react";
+import { ArrowRight, ChevronRight, TrendingUp, type LucideIcon } from "lucide-react";
 
 // ============================================
-// STAT CARD COMPONENT
+// STAT CARD COMPONENT (Redesigned)
 // ============================================
 
 const statColors = {
@@ -43,7 +44,7 @@ export function StatCard({
   label,
   value,
   icon: Icon,
-  color = "blue",
+  color = "blue", // Kept for API compatibility, but usage minimized
   trend,
   trendUp,
   href,
@@ -58,47 +59,41 @@ export function StatCard({
   href?: string;
   description?: string;
 }) {
-  const colors = statColors[color];
 
   const content = (
     <Card
       className={cn(
-        "relative overflow-hidden group transition-all",
-        href && "hover:shadow-lg hover:border-primary/20 cursor-pointer",
+        "group transition-all border-border/50 shadow-sm",
+        href && "hover:shadow-md hover:border-primary/20 cursor-pointer",
       )}
     >
-      <div className={cn("absolute top-0 left-0 right-0 h-1", colors.bar)} />
-      <CardContent className="pt-5 pb-4">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">{label}</p>
-            <p className="text-2xl font-bold tracking-tight">{value}</p>
-            {description && (
-              <p className="text-xs text-muted-foreground">{description}</p>
-            )}
-          </div>
-          {Icon && (
-            <div className={cn("p-2.5 rounded-xl", colors.bg)}>
-              <Icon className={cn("h-4 w-4", colors.text)} />
-            </div>
-          )}
+      <CardContent className="p-6">
+        <div className="flex items-center justify-between space-y-0 pb-2">
+          <p className="text-sm font-medium text-muted-foreground">{label}</p>
+          {Icon && <Icon className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />}
         </div>
-        {trend && (
-          <div
-            className={cn(
-              "flex items-center gap-1.5 mt-3 pt-3 border-t text-xs",
-              trendUp
-                ? "text-emerald-600"
-                : trendUp === false
-                  ? "text-rose-600"
-                  : "text-muted-foreground",
+        <div className="flex items-center gap-2 mt-2">
+          <div className="text-2xl font-bold tracking-tight">{value}</div>
+        </div>
+        {(trend || description) && (
+          <div className="flex items-center gap-2 mt-4 text-xs">
+            {trend && (
+              <span
+                className={cn(
+                  "flex items-center font-medium",
+                  trendUp === true && "text-emerald-600",
+                  trendUp === false && "text-rose-600",
+                  trendUp === undefined && "text-muted-foreground"
+                )}
+              >
+                {trendUp === true && <TrendingUp className="h-3 w-3 mr-1" />}
+                {trend}
+              </span>
             )}
-          >
-            <span className="font-medium">{trend}</span>
+            {description && (
+              <span className="text-muted-foreground truncate max-w-[140px]">{description}</span>
+            )}
           </div>
-        )}
-        {href && (
-          <ArrowRight className="absolute bottom-3 left-3 h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
         )}
       </CardContent>
     </Card>
@@ -111,7 +106,7 @@ export function StatCard({
 }
 
 // ============================================
-// PAGE HEADER COMPONENT
+// PAGE HEADER COMPONENT (Redesigned)
 // ============================================
 
 export function PageHeader({
@@ -128,9 +123,9 @@ export function PageHeader({
   breadcrumbs?: Array<{ label: string; href?: string }>;
 }) {
   return (
-    <>
+    <div className="space-y-4 pb-4">
       {breadcrumbs.length > 0 && (
-        <Breadcrumb>
+        <Breadcrumb className="hidden md:flex">
           <BreadcrumbList>
             <BreadcrumbItem>
               <BreadcrumbLink href="/">{/* Dashboard */}</BreadcrumbLink>
@@ -140,14 +135,11 @@ export function PageHeader({
                 <BreadcrumbSeparator />
                 <BreadcrumbItem>
                   {crumb.href ? (
-                    <BreadcrumbLink href={crumb.href}>
+                    <BreadcrumbLink href={crumb.href} className="transition-colors hover:text-foreground">
                       {crumb.label}
                     </BreadcrumbLink>
                   ) : (
-                    <BreadcrumbPage className="flex items-center gap-2">
-                      {Icon && i === breadcrumbs.length - 1 && (
-                        <Icon className="h-4 w-4" />
-                      )}
+                    <BreadcrumbPage className="font-medium">
                       {crumb.label}
                     </BreadcrumbPage>
                   )}
@@ -159,23 +151,24 @@ export function PageHeader({
       )}
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            {Icon && <Icon className="h-5 w-5 text-primary" />}
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-3">
+            {Icon && <div className="p-1.5 rounded-lg bg-primary/10 text-primary"><Icon className="h-5 w-5" /></div>}
             {title}
           </h1>
           {description && (
-            <p className="text-sm text-muted-foreground mt-1">{description}</p>
+            <p className="text-sm text-muted-foreground max-w-2xl">{description}</p>
           )}
         </div>
-        {action}
+        {action && <div className="flex items-center gap-2">{action}</div>}
       </div>
-    </>
+      <Separator className="mt-4 opacity-50" />
+    </div>
   );
 }
 
 // ============================================
-// EMPTY STATE COMPONENT
+// EMPTY STATE COMPONENT (Redesigned)
 // ============================================
 
 export function EmptyState({
@@ -190,18 +183,16 @@ export function EmptyState({
   action?: React.ReactNode;
 }) {
   return (
-    <Card>
-      <CardContent className="py-16 text-center">
-        <div className="mx-auto w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-4">
-          <Icon className="h-7 w-7 text-muted-foreground" />
-        </div>
-        <p className="text-lg font-medium">{title}</p>
-        {description && (
-          <p className="text-sm text-muted-foreground mt-1">{description}</p>
-        )}
-        {action && <div className="mt-6">{action}</div>}
-      </CardContent>
-    </Card>
+    <div className="flex flex-col items-center justify-center py-16 px-4 text-center border-2 border-dashed border-muted rounded-xl bg-muted/20">
+      <div className="mx-auto w-12 h-12 rounded-full bg-background border border-border flex items-center justify-center mb-4 shadow-sm">
+        <Icon className="h-6 w-6 text-muted-foreground" />
+      </div>
+      <h3 className="text-lg font-semibold">{title}</h3>
+      {description && (
+        <p className="text-sm text-muted-foreground mt-1 max-w-sm">{description}</p>
+      )}
+      {action && <div className="mt-6">{action}</div>}
+    </div>
   );
 }
 
@@ -211,26 +202,33 @@ export function EmptyState({
 
 export function PageSkeleton({ cards = 4 }: { cards?: number }) {
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="space-y-2">
-          <Skeleton className="h-8 w-48" />
-          <Skeleton className="h-4 w-64" />
+    <div className="space-y-8 animate-pulse">
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <Skeleton className="h-10 w-32" />
         </div>
-        <Skeleton className="h-10 w-32" />
+        <Separator />
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {Array.from({ length: cards }).map((_, i) => (
-          <Skeleton key={i} className="h-28 rounded-xl" />
+          <Skeleton key={i} className="h-32 rounded-xl border border-muted" />
         ))}
       </div>
-      <Skeleton className="h-64 rounded-xl" />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Skeleton className="h-80 md:col-span-2 rounded-xl" />
+        <Skeleton className="h-80 rounded-xl" />
+      </div>
     </div>
   );
 }
 
 // ============================================
-// CARD LIST ITEM
+// CARD LIST ITEM (Redesigned)
 // ============================================
 
 export function CardListItem({
@@ -259,50 +257,48 @@ export function CardListItem({
   const colors = statColors[iconColor];
 
   const content = (
-    <Card
+    <div
       className={cn(
-        "group transition-all",
-        (onClick || href) &&
-          "hover:shadow-md hover:border-primary/20 cursor-pointer",
+        "group flex items-center justify-between p-4 rounded-xl border border-transparent hover:border-border hover:bg-muted/30 transition-all",
+        (onClick || href) && "cursor-pointer"
       )}
     >
-      <CardContent className="p-4">
-        <div className="flex items-center gap-4">
-          {Icon && (
-            <div className={cn("p-3 rounded-xl shrink-0", colors.bg)}>
-              <Icon className={cn("h-5 w-5", colors.text)} />
-            </div>
-          )}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-medium truncate">{title}</h3>
-              {badges.map((badge, i) => (
-                <Badge
-                  key={i}
-                  variant={badge.variant || "secondary"}
-                  className={cn("text-[10px]", badge.className)}
-                >
-                  {badge.label}
-                </Badge>
-              ))}
-            </div>
-            {subtitle && (
-              <p className="text-xs text-muted-foreground mt-1 truncate">
-                {subtitle}
-              </p>
-            )}
+      <div className="flex items-center gap-4 min-w-0">
+        {Icon && (
+          <div className={cn("h-10 w-10 rounded-lg flex items-center justify-center shrink-0 border border-border/50 bg-background", colors.text)}>
+            <Icon className="h-5 w-5" />
           </div>
-          {actions}
-          {(onClick || href) && (
-            <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+        )}
+        <div className="min-w-0 space-y-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium truncate text-sm md:text-base">{title}</span>
+            {badges.map((badge, i) => (
+              <Badge
+                key={i}
+                variant={badge.variant || "secondary"}
+                className={cn("text-[10px] h-5 px-1.5 font-normal", badge.className)}
+              >
+                {badge.label}
+              </Badge>
+            ))}
+          </div>
+          {subtitle && (
+            <p className="text-xs text-muted-foreground truncate">{subtitle}</p>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+
+      <div className="flex items-center gap-3">
+        {actions}
+        {(onClick || href) && (
+          <ChevronRight className="h-4 w-4 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
+        )}
+      </div>
+    </div>
   );
 
   if (href) {
-    return <Link href={href}>{content}</Link>;
+    return <Link href={href} className="block">{content}</Link>;
   }
   if (onClick) {
     return <div onClick={onClick}>{content}</div>;
@@ -311,7 +307,7 @@ export function CardListItem({
 }
 
 // ============================================
-// SEARCH INPUT
+// SEARCH INPUT (Redesigned)
 // ============================================
 
 export function SearchInput({
@@ -326,7 +322,7 @@ export function SearchInput({
   return (
     <div className="relative flex-1">
       <svg
-        className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+        className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none"
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"
@@ -343,7 +339,7 @@ export function SearchInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-lg border bg-background px-4 py-2.5 pr-10 text-sm outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+        className="w-full rounded-lg border border-input bg-background/50 px-4 py-2 pr-10 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all"
       />
     </div>
   );
@@ -361,8 +357,8 @@ export function ResultCount({
   total: number;
 }) {
   return (
-    <div className="text-center text-sm text-muted-foreground py-4">
-      عرض {showing} من {total}
+    <div className="text-center text-xs text-muted-foreground py-4 bg-muted/10 rounded-lg border border-border/20">
+      عرض <span className="font-medium text-foreground">{showing}</span> من <span className="font-medium text-foreground">{total}</span>
     </div>
   );
 }

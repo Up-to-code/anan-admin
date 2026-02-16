@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -63,6 +64,7 @@
     from {
       height: 0;
     }
+
     to {
       height: var(--radix-accordion-content-height);
     }
@@ -72,6 +74,7 @@
     from {
       height: var(--radix-accordion-content-height);
     }
+
     to {
       height: 0;
     }
@@ -79,29 +82,55 @@
 }
 
 .dark {
+  /* Zinc Palette Reference:
+     950: #09090b
+     900: #18181b
+     800: #27272a
+     700: #3f3f46
+     ...
+     50:  #fafafa
+  */
   --background: 240 10% 3.9%;
+  /* #09090b - Zinc 950 */
   --foreground: 0 0% 98%;
+  /* #fafafa - Zinc 50 */
+
   --card: 240 10% 3.9%;
+  /* #09090b - Zinc 950 (or slight lighter #18181b if needed) */
   --card-foreground: 0 0% 98%;
+
   --popover: 240 10% 3.9%;
   --popover-foreground: 0 0% 98%;
-  --primary: 211 60% 35%;
-  --primary-foreground: 0 0% 98%;
+
+  --primary: 0 0% 98%;
+  --primary-foreground: 240 5.9% 10%;
+
   --secondary: 240 3.7% 15.9%;
+  /* #27272a - Zinc 800 (Used for user bubbles/accents) */
   --secondary-foreground: 0 0% 98%;
+
   --muted: 240 3.7% 15.9%;
+  /* #27272a - Zinc 800 */
   --muted-foreground: 240 5% 64.9%;
+  /* #a1a1aa - Zinc 400 */
+
   --accent: 240 3.7% 15.9%;
+  /* #27272a - Zinc 800 */
   --accent-foreground: 0 0% 98%;
+
   --destructive: 0 62.8% 30.6%;
   --destructive-foreground: 0 0% 98%;
-  --border: 240 3.7% 15.9%;
-  --input: 240 3.7% 15.9%;
-  --ring: 211 60% 35%;
 
-  --sidebar-background: 240 5.9% 10%;
+  --border: 240 3.7% 15.9%;
+  /* #27272a - Zinc 800 */
+  --input: 240 3.7% 15.9%;
+  --ring: 240 4.9% 83.9%;
+
+  /* Sidebar: Strictly Black or very deep Zinc */
+  --sidebar-background: 0 0% 0%;
+  /* #000000 */
   --sidebar-foreground: 240 4.8% 95.9%;
-  --sidebar-primary: 211 60% 35%;
+  --sidebar-primary: 224.3 76.3% 48%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 240 3.7% 15.9%;
   --sidebar-accent-foreground: 240 4.8% 95.9%;
@@ -115,7 +144,7 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans;
+    @apply bg-background text-foreground font-sans antialiased;
   }
 }
 
@@ -123,6 +152,7 @@
   &::-webkit-scrollbar {
     display: none;
   }
+
   -ms-overflow-style: none;
   scrollbar-width: none;
 }

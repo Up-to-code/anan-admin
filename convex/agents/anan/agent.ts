@@ -4,6 +4,7 @@
 
 import { Agent } from "@convex-dev/agent";
 import { components } from "../../_generated/api";
+import { getLLMTimeoutMs } from "../config";
 import { getChatModel, getEmbeddingModel } from "../../lib/providers";
 import { recordAgentUsage } from "../../costs";
 import { buildAgentInstructions } from "./instructions";
@@ -18,6 +19,7 @@ export function createAnanAgent(appApi: AgentToolsApi) {
     name: "Anan",
     languageModel: getChatModel(),
     textEmbeddingModel: getEmbeddingModel(),
+    callSettings: { timeout: getLLMTimeoutMs() },
     instructions: buildAgentInstructions(),
     tools,
     maxSteps: 6,

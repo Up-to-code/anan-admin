@@ -656,35 +656,35 @@ export const renameAdminThread = mutation({
 
 /**
  * Delete an admin thread.
+ * Runs as a mutation so auth context matches createAdminThread/listAdminThreads (admin-${userId}).
  */
-export const deleteAdminThread = action({
+export const deleteAdminThread = mutation({
   args: {
     threadId: v.string(),
   },
   handler: async (ctx, { threadId }) => {
-    // Require admin authentication
+    await requireAdmin(ctx);
     const authUser = await authComponent.getAuthUser(ctx);
     if (!authUser) {
       throw new Error("Admin authentication required");
     }
-    
+
     const userId = `admin-${authUser.userId ?? String(authUser._id)}`;
-    
-    // Verify ownership
+
     const threads = await ctx.runQuery(components.agent.threads.listThreadsByUserId, {
       userId,
       paginationOpts: { numItems: 100, cursor: null },
     });
-    
+
     const ownsThread = threads.page.some((t: { _id: string }) => t._id === threadId);
     if (!ownsThread) {
       throw new Error("Thread not found or access denied");
     }
-    
+
     await ctx.runMutation(components.agent.threads.deleteAllForThreadIdAsync, {
       threadId,
     });
-    
+
     return { success: true };
   },
 });

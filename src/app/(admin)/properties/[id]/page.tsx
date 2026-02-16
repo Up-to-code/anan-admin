@@ -46,47 +46,8 @@ import {
   Image as ImageIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PageHeader, StatCard } from "@/components/admin/ui";
 
-function StatCard({
-  label,
-  value,
-  icon: Icon,
-  color = "blue",
-}: {
-  label: string;
-  value: string | number;
-  icon?: React.ElementType;
-  color?: "blue" | "emerald" | "amber" | "rose" | "violet";
-}) {
-  const colorClasses: Record<string, string> = {
-    blue: "bg-blue-500/10 text-blue-600",
-    emerald: "bg-emerald-500/10 text-emerald-600",
-    amber: "bg-amber-500/10 text-amber-600",
-    rose: "bg-rose-500/10 text-rose-600",
-    violet: "bg-violet-500/10 text-violet-600",
-  };
-
-  return (
-    <Card className="relative overflow-hidden">
-      <div
-        className={cn("absolute top-0 left-0 right-0 h-1", `bg-${color}-500`)}
-      />
-      <CardContent className="pt-5 pb-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground">{label}</p>
-            <p className="text-xl font-bold mt-1">{value}</p>
-          </div>
-          {Icon && (
-            <div className={cn("p-2.5 rounded-xl", colorClasses[color])}>
-              <Icon className="h-4 w-4" />
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 function InfoRow({
   label,
@@ -212,72 +173,23 @@ export default function PropertyDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink href="/">{ar.dashboard}</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink href="/properties">{ar.properties}</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage className="flex items-center gap-2">
-              <Home className="h-4 w-4" />
-              {property.title}
-            </BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-
-      <Card className="relative overflow-hidden">
-        <div
-          className={cn(
-            "h-1",
-            property.status === "sold"
-              ? "bg-rose-500"
-              : property.status === "reserved"
-                ? "bg-amber-500"
-                : "bg-emerald-500",
-          )}
-        />
-        <CardContent className="pt-6 pb-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-            <div className="flex items-start gap-4">
-              <div className={cn("p-4 rounded-xl", status.className)}>
-                <Home className="h-8 w-8" />
-              </div>
-              <div>
-                <div className="flex items-center gap-3">
-                  <h1 className="text-xl font-bold">{property.title}</h1>
-                  <Badge
-                    variant="outline"
-                    className={cn("text-[10px]", status.className)}
-                  >
-                    {status.label}
-                  </Badge>
-                </div>
-                <div className="flex items-center gap-1.5 text-muted-foreground mt-1">
-                  <MapPin className="h-4 w-4" />
-                  <span>{property.location || property.area || "-"}</span>
-                </div>
-                {property.price && (
-                  <p className="text-2xl font-bold text-primary mt-2">
-                    {property.price.toLocaleString("ar-SA")} ر.س
-                  </p>
-                )}
-              </div>
-            </div>
-            <Button asChild>
-              <Link href={`/properties/${property._id}/edit`}>
-                <Pencil className="h-4 w-4 ml-2" />
-                {ar.edit}
-              </Link>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <PageHeader
+        title={property.title}
+        description={property.location || property.area || "-"}
+        icon={Home}
+        breadcrumbs={[
+          { label: ar.properties, href: "/properties" },
+          { label: property.title },
+        ]}
+        action={
+          <Button asChild>
+            <Link href={`/properties/${property._id}/edit`}>
+              <Pencil className="h-4 w-4 ml-2" />
+              {ar.edit}
+            </Link>
+          </Button>
+        }
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard

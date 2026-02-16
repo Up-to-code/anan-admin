@@ -1,7 +1,7 @@
-import type { LanguageModel } from "ai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createOpenAI } from "@ai-sdk/openai";
-import type { EmbeddingModel } from "ai";
+import type { EmbeddingModelV3 } from "@ai-sdk/provider";
+import type { LanguageModelV3 } from "@ai-sdk/provider";
 import { getAgentLLMConfig } from "../agents/config";
 
 const OPENROUTER_EMBEDDING_MODEL = "openai/text-embedding-3-small";
@@ -13,12 +13,12 @@ const OPENROUTER_EMBEDDING_MODEL = "openai/text-embedding-3-small";
  * - server: custom production server at LLM_BASE_URL
  * See convex/agents/config.ts and .env.example.
  */
-export function getChatModel(): LanguageModel {
+export function getChatModel(): LanguageModelV3 {
   const config = getAgentLLMConfig();
 
   if (config.mode === "openrouter") {
     const openrouter = createOpenRouter({ apiKey: config.apiKey });
-    return openrouter.chat(config.model) as unknown as LanguageModel;
+    return openrouter.chat(config.model);
   }
 
   if (config.mode === "local" || config.mode === "server") {
@@ -26,7 +26,7 @@ export function getChatModel(): LanguageModel {
       baseURL: config.baseURL,
       apiKey: config.apiKey?.trim() || "dummy",
     });
-    return openai.chat(config.model) as unknown as LanguageModel;
+    return openai.chat(config.model);
   }
 
   throw new Error(`Unsupported LLM mode: ${(config as { mode: string }).mode}`);
@@ -36,21 +36,19 @@ export function getChatModel(): LanguageModel {
  * Returns the embedding model for agents. Uses OpenRouter when LLM_MODE=openrouter
  * (single API key for chat + embeddings); otherwise OpenAI-compatible at baseURL.
  */
-export function getEmbeddingModel(): EmbeddingModel {
+export function getEmbeddingModel(): EmbeddingModelV3 {
   const config = getAgentLLMConfig();
 
   if (config.mode === "openrouter") {
     const openrouter = createOpenRouter({ apiKey: config.apiKey });
     const model =
       process.env.OPENROUTER_EMBEDDING_MODEL ?? OPENROUTER_EMBEDDING_MODEL;
-    return openrouter.textEmbeddingModel(
-      model as `${string}/${string}`
-    ) as unknown as EmbeddingModel;
+    return openrouter.textEmbeddingModel(model as `${string}/${string}`);
   }
 
   // local/server: use OpenAI for embeddings (most custom servers don't support embeddings)
   const openai = createOpenAI({
     apiKey: process.env.OPENAI_API_KEY?.trim() || "dummy",
   });
-  return openai.embedding("text-embedding-3-small") as unknown as EmbeddingModel;
+  return openai.embedding("text-embedding-3-small");
 }

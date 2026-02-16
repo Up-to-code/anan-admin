@@ -10,14 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -39,67 +31,24 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-
-function StatCard({
-  label,
-  value,
-  icon: Icon,
-  color = "blue",
-  description,
-}: {
-  label: string;
-  value: string | number;
-  icon?: React.ElementType;
-  color?: "blue" | "emerald" | "amber" | "rose";
-  description?: string;
-}) {
-  const colorClasses: Record<string, string> = {
-    blue: "bg-blue-500/10 text-blue-600",
-    emerald: "bg-emerald-500/10 text-emerald-600",
-    amber: "bg-amber-500/10 text-amber-600",
-    rose: "bg-rose-500/10 text-rose-600",
-  };
-
-  return (
-    <Card className="relative overflow-hidden">
-      <div
-        className={cn("absolute top-0 left-0 right-0 h-1", `bg-${color}-500`)}
-      />
-      <CardContent className="pt-5 pb-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground">{label}</p>
-            <p className="text-2xl font-bold mt-1">{value}</p>
-            {description && (
-              <p className="text-xs text-muted-foreground mt-1">
-                {description}
-              </p>
-            )}
-          </div>
-          {Icon && (
-            <div className={cn("p-2.5 rounded-xl", colorClasses[color])}>
-              <Icon className="h-4 w-4" />
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+import { StatCard, PageHeader, EmptyState, ResultCount } from "@/components/admin/ui";
 
 function PropertyCard({ property }: { property: any }) {
   const statusConfig = {
     available: {
       label: ar.available,
-      className: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
+      class: "bg-emerald-500/10 text-emerald-600",
+      border: "border-emerald-200/50",
     },
     sold: {
       label: ar.sold,
-      className: "bg-rose-500/10 text-rose-600 border-rose-500/20",
+      class: "bg-rose-500/10 text-rose-600",
+      border: "border-rose-200/50",
     },
     reserved: {
       label: ar.reserved,
-      className: "bg-amber-500/10 text-amber-600 border-amber-500/20",
+      class: "bg-amber-500/10 text-amber-600",
+      border: "border-amber-200/50",
     },
   };
   const status =
@@ -108,63 +57,54 @@ function PropertyCard({ property }: { property: any }) {
 
   return (
     <Link href={`/properties/${property._id}`}>
-      <Card className="group hover:shadow-md hover:border-primary/20 transition-all cursor-pointer overflow-hidden">
-        <div
-          className={cn(
-            "h-1",
-            property.status === "sold"
-              ? "bg-rose-500"
-              : property.status === "reserved"
-                ? "bg-amber-500"
-                : "bg-emerald-500",
-          )}
-        />
+      <Card className="group transition-all hover:shadow-md hover:border-primary/20 cursor-pointer overflow-hidden border-border/50">
         <CardContent className="p-4">
           <div className="flex items-start gap-4">
-            <div className={cn("p-3 rounded-xl shrink-0", status.className)}>
+            <div className={cn("p-3 rounded-xl shrink-0 transition-colors", status.class)}>
               <Home className="h-5 w-5" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <h3 className="font-medium truncate">{property.title}</h3>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="font-medium truncate text-base">{property.title}</h3>
+                <Badge
+                  variant="outline"
+                  className={cn("text-[10px] font-normal h-5 ml-auto shrink-0", status.class, status.border)}
+                >
+                  {status.label}
+                </Badge>
               </div>
-              <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-                <MapPin className="h-3 w-3" />
+
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1 mb-3">
+                <MapPin className="h-3.5 w-3.5 opacity-70" />
                 <span className="truncate">
                   {property.location || property.area || "-"}
                 </span>
               </div>
-              <div className="flex items-center gap-4 mt-2">
+
+              <div className="flex items-center justify-between mt-2 pt-3 border-t border-border/40">
                 {property.price && (
                   <div className="flex items-center gap-1 text-sm font-semibold text-primary">
-                    <DollarSign className="h-3 w-3" />
-                    {property.price.toLocaleString("ar-SA")} ر.س
+                    <DollarSign className="h-3.5 w-3.5" />
+                    {property.price.toLocaleString("ar-SA")}
                   </div>
                 )}
-                {(property.beds || property.baths) && (
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    {property.beds && (
-                      <div className="flex items-center gap-1">
-                        <Bed className="h-3 w-3" />
-                        {property.beds}
-                      </div>
-                    )}
-                    {property.baths && (
-                      <div className="flex items-center gap-1">
-                        <Bath className="h-3 w-3" />
-                        {property.baths}
-                      </div>
-                    )}
-                  </div>
-                )}
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  {property.beds && (
+                    <div className="flex items-center gap-1">
+                      <Bed className="h-3.5 w-3.5 opacity-70" />
+                      {property.beds}
+                    </div>
+                  )}
+                  {property.baths && (
+                    <div className="flex items-center gap-1">
+                      <Bath className="h-3.5 w-3.5 opacity-70" />
+                      {property.baths}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-            <Badge
-              variant="outline"
-              className={cn("text-[10px]", status.className)}
-            >
-              {status.label}
-            </Badge>
+            <ChevronRight className="h-4 w-4 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors self-center mt-1" />
           </div>
         </CardContent>
       </Card>
@@ -217,35 +157,20 @@ export default function PropertiesPage() {
 
   return (
     <div className="space-y-6">
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink href="/">{ar.dashboard}</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage className="flex items-center gap-2">
-              <Home className="h-4 w-4" />
-              {ar.properties}
-            </BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold">{ar.properties}</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {ar.managePropertiesDesc}
-          </p>
-        </div>
-        <Button asChild>
-          <Link href="/properties/create">
-            <Plus className="ml-2 h-4 w-4" />
-            {ar.addProperty}
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        title={ar.properties}
+        description={ar.managePropertiesDesc}
+        icon={Building2}
+        breadcrumbs={[{ label: ar.properties }]}
+        action={
+          <Button asChild>
+            <Link href="/properties/create">
+              <Plus className="ml-2 h-4 w-4" />
+              {ar.addProperty}
+            </Link>
+          </Button>
+        }
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
@@ -304,25 +229,19 @@ export default function PropertiesPage() {
           ))}
         </div>
       ) : filteredProperties.length === 0 ? (
-        <Card>
-          <CardContent className="py-16 text-center">
-            <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
-              <Building2 className="h-6 w-6 text-muted-foreground" />
-            </div>
-            <p className="text-muted-foreground font-medium">
-              {ar.noPropertiesFound}
-            </p>
-            <p className="text-sm text-muted-foreground mt-1">
-              {ar.tryChangingSearch}
-            </p>
-            <Button asChild className="mt-4">
+        <EmptyState
+          icon={Building2}
+          title={ar.noPropertiesFound}
+          description={ar.tryChangingSearch}
+          action={
+            <Button asChild>
               <Link href="/properties/create">
                 <Plus className="ml-2 h-4 w-4" />
                 {ar.addProperty}
               </Link>
             </Button>
-          </CardContent>
-        </Card>
+          }
+        />
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredProperties.map((property) => (
@@ -332,11 +251,7 @@ export default function PropertiesPage() {
       )}
 
       {!loading && filteredProperties.length > 0 && (
-        <div className="text-center text-sm text-muted-foreground">
-          {ar.showingCountOfTotal
-                  .replace("{count}", String(filteredProperties.length))
-                  .replace("{total}", String(stats.total))}
-        </div>
+        <ResultCount showing={filteredProperties.length} total={stats.total} />
       )}
     </div>
   );

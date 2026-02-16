@@ -18,46 +18,8 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Heart, User, Building2, MapPin, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PageHeader, StatCard } from "@/components/admin/ui";
 
-function StatCard({
-  label,
-  value,
-  icon: Icon,
-  color = "rose",
-}: {
-  label: string;
-  value: string | number;
-  icon?: React.ElementType;
-  color?: "rose" | "emerald" | "blue" | "violet";
-}) {
-  const colorClasses: Record<string, string> = {
-    rose: "bg-rose-500/10 text-rose-600",
-    emerald: "bg-emerald-500/10 text-emerald-600",
-    blue: "bg-blue-500/10 text-blue-600",
-    violet: "bg-violet-500/10 text-violet-600",
-  };
-
-  return (
-    <Card className="relative overflow-hidden">
-      <div
-        className={cn("absolute top-0 left-0 right-0 h-1", `bg-${color}-500`)}
-      />
-      <CardContent className="pt-5 pb-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground">{label}</p>
-            <p className="text-2xl font-bold mt-1">{value}</p>
-          </div>
-          {Icon && (
-            <div className={cn("p-2.5 rounded-xl", colorClasses[color])}>
-              <Icon className="h-4 w-4" />
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 function FavoriteCard({ favorite }: { favorite: any }) {
   return (
@@ -109,25 +71,12 @@ export default function FavoritesPage() {
 
   return (
     <div className="space-y-6">
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink href="/">{ar.dashboard}</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage className="flex items-center gap-2">
-              <Heart className="h-4 w-4" />
-              {ar.favorites}
-            </BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-
-      <div>
-        <h1 className="text-xl font-bold">{ar.favorites}</h1>
-        <p className="text-sm text-muted-foreground mt-1">{ar.engagement}</p>
-      </div>
+      <PageHeader
+        title={ar.favorites}
+        description={ar.engagement}
+        icon={Heart}
+        breadcrumbs={[{ label: ar.favorites }]}
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
