@@ -53,6 +53,7 @@ export const ar = {
   import: "استيراد",
   refresh: "تحديث",
   view: "عرض",
+  viewDetails: "عرض التفاصيل",
   close: "إغلاق",
   confirm: "تأكيد",
   submit: "إرسال",
@@ -91,6 +92,16 @@ export const ar = {
   addPhone: "إضافة رقم",
   user: "مستخدم",
   admin: "مشرف",
+  team: "الفريق",
+  teamDesc: "إدارة أعضاء الفريق الذين يمكنهم استخدام لوحة التحكم. يمكنك تعديل دور كل عضو فقط.",
+  teamMembers: "أعضاء الفريق",
+  noTeamMembers: "لا يوجد أعضاء في الفريق",
+  teamEmptyDesc: "لم تتم إضافة أي أعضاء بعد. أضف مشرفين عبر صفحة المستخدمين.",
+  legacyAdmin: "مشرف قديم",
+  agentChat: "وكيل AI",
+  myStats: "إحصائياتي",
+  myThreads: "محادثاتي",
+  myActivity: "نشاطي",
 
   // Fields
   name: "الاسم",
@@ -165,6 +176,7 @@ export const ar = {
   closed_lost: "تم الإغلاق (خسارة)",
 
   all: "الكل",
+  filterBy: "تصفية حسب",
 
   // Empty / messages
   noResults: "لا توجد نتائج",

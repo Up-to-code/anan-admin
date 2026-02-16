@@ -5,10 +5,107 @@
 import { mutation, query } from "../_generated/server";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
+import type { Doc } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
+import { components } from "../_generated/api";
 import { requireAdmin, getUserRoleByPhone } from "../lib/auth";
+import { authComponent } from "../auth";
 import { normalizePhone } from "../lib/phone";
 import { roleValidator } from "../roles";
+
+/** Synthetic profile shape for users who exist in Better Auth but not in userProfiles */
+type SyntheticProfile = {
+  _id: "synthetic";
+  _creationTime: number;
+  userId: string;
+  name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  verified?: boolean;
+  source?: "whatsapp" | "app" | "web";
+};
+
+/** Fetch Better Auth users and merge with userProfiles. Returns merged list. */
+async function fetchMergedUserList(
+  ctx: QueryCtx,
+  limit: number
+): Promise<Array<Doc<"userProfiles"> | SyntheticProfile>> {
+  const [profilesResult, baResult] = await Promise.all([
+    ctx.db.query("userProfiles").order("desc").take(limit * 2),
+    ctx.runQuery(components.betterAuth.adapter.findMany, {
+      model: "user",
+      paginationOpts: { numItems: 500, cursor: null },
+      sortBy: { field: "createdAt", direction: "desc" },
+    }),
+  ]);
+
+  const profileByUserId = new Map(
+    profilesResult.map((p) => [p.userId, p] as const)
+  );
+  const profiles = profilesResult;
+
+  const baPage =
+    Array.isArray(baResult)
+      ? baResult
+      : ((baResult as { page?: unknown[] })?.page ?? []);
+  const synthetic: SyntheticProfile[] = [];
+  for (const ba of baPage) {
+    const userId = String(ba._id);
+    if (profileByUserId.has(userId)) continue;
+    synthetic.push({
+      _id: "synthetic",
+      _creationTime: (ba as { createdAt?: number }).createdAt ?? 0,
+      userId,
+      name: (ba as { name?: string }).name ?? null,
+      phone: (ba as { phoneNumber?: string }).phoneNumber ?? null,
+      email: (ba as { email?: string }).email ?? null,
+      verified: (ba as { emailVerified?: boolean }).emailVerified ?? false,
+    });
+  }
+
+  const merged = [...profiles, ...synthetic];
+  merged.sort((a, b) => b._creationTime - a._creationTime);
+  return merged.slice(0, limit);
+}
+
+/** Same as fetchMergedUserList but returns full merged list for pagination */
+async function fetchAllMergedUsers(
+  ctx: QueryCtx
+): Promise<Array<Doc<"userProfiles"> | SyntheticProfile>> {
+  const [profilesResult, baResult] = await Promise.all([
+    ctx.db.query("userProfiles").order("desc").collect(),
+    ctx.runQuery(components.betterAuth.adapter.findMany, {
+      model: "user",
+      paginationOpts: { numItems: 1000, cursor: null },
+      sortBy: { field: "createdAt", direction: "desc" },
+    }),
+  ]);
+
+  const profileByUserId = new Map(
+    profilesResult.map((p) => [p.userId, p] as const)
+  );
+  const baPage =
+    Array.isArray(baResult)
+      ? baResult
+      : ((baResult as { page?: unknown[] })?.page ?? []);
+  const synthetic: SyntheticProfile[] = [];
+  for (const ba of baPage) {
+    const userId = String(ba._id);
+    if (profileByUserId.has(userId)) continue;
+    synthetic.push({
+      _id: "synthetic",
+      _creationTime: (ba as { createdAt?: number }).createdAt ?? 0,
+      userId,
+      name: (ba as { name?: string }).name ?? null,
+      phone: (ba as { phoneNumber?: string }).phoneNumber ?? null,
+      email: (ba as { email?: string }).email ?? null,
+      verified: (ba as { emailVerified?: boolean }).emailVerified ?? false,
+    });
+  }
+  const merged = [...profilesResult, ...synthetic];
+  merged.sort((a, b) => b._creationTime - a._creationTime);
+  return merged;
+}
 
 async function enrichUsersWithPhoneAndRole(
   ctx: QueryCtx,
@@ -42,7 +139,15 @@ async function enrichUsersWithPhoneAndRole(
     }
   }
 
+  const adminUserIds = new Set(
+    (await ctx.db.query("adminUsers").collect()).map((a) => a.userId)
+  );
+
   return users.map((u) => {
+    if (adminUserIds.has(u.userId)) {
+      const phoneNumber = verifiedByUserId.get(u.userId) ?? u.phone ?? null;
+      return { userId: u.userId, phoneNumber, role: "admin" as const };
+    }
     const phoneNumber = verifiedByUserId.get(u.userId) ?? null;
     const normalizedPhone = phoneNumber
       ? normalizePhone(phoneNumber)
@@ -60,12 +165,12 @@ export const listUsers = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit = 50 }) => {
     await requireAdmin(ctx);
-    const page = await ctx.db
-      .query("userProfiles")
-      .order("desc")
-      .take(limit);
+    const page = await fetchMergedUserList(ctx, limit);
 
-    const enrichedData = await enrichUsersWithPhoneAndRole(ctx, page);
+    const enrichedData = await enrichUsersWithPhoneAndRole(
+      ctx,
+      page.map((u) => ({ userId: u.userId, phone: u.phone ?? undefined }))
+    );
     const enrichedMap = new Map(enrichedData.map((e) => [e.userId, e]));
 
     const [activities, orders] = await Promise.all([
@@ -122,15 +227,21 @@ export const usersList = query({
   args: { paginationOpts: paginationOptsValidator },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
-    const result = await ctx.db
-      .query("userProfiles")
-      .order("desc")
-      .paginate(args.paginationOpts);
+    const merged = await fetchAllMergedUsers(ctx);
+    const numItems = args.paginationOpts.numItems ?? 20;
+    const cursor = args.paginationOpts.cursor;
+    const offset = cursor ? parseInt(cursor, 10) || 0 : 0;
+    const page = merged.slice(offset, offset + numItems);
+    const isDone = offset + numItems >= merged.length;
+    const continueCursor = isDone ? null : String(offset + numItems);
 
-    const enrichedData = await enrichUsersWithPhoneAndRole(ctx, result.page);
+    const enrichedData = await enrichUsersWithPhoneAndRole(
+      ctx,
+      page.map((u) => ({ userId: u.userId, phone: u.phone ?? undefined }))
+    );
     const enrichedMap = new Map(enrichedData.map((e) => [e.userId, e]));
 
-    const pageWithPhoneAndRole = result.page.map((u) => {
+    const pageWithPhoneAndRole = page.map((u) => {
       const enriched = enrichedMap.get(u.userId);
       return {
         ...u,
@@ -139,7 +250,11 @@ export const usersList = query({
       };
     });
 
-    return { ...result, page: pageWithPhoneAndRole };
+    return {
+      page: pageWithPhoneAndRole,
+      isDone,
+      continueCursor,
+    };
   },
 });
 
@@ -151,25 +266,142 @@ export const usersGetByUserId = query({
       .query("userProfiles")
       .withIndex("userId", (q) => q.eq("userId", userId))
       .first();
-    if (!profile) return null;
     const verified = await ctx.db
       .query("verifiedPhones")
       .withIndex("userId", (q) => q.eq("userId", userId))
       .first();
     const phoneNumber = verified ? verified.phoneNumber : null;
-    const role = phoneNumber
+    const roleFromPhone = phoneNumber
       ? await getUserRoleByPhone(ctx, phoneNumber)
       : ("user" as const);
+
+    if (profile) {
+      const legacyAdmin = await ctx.db
+        .query("adminUsers")
+        .withIndex("userId", (q) => q.eq("userId", userId))
+        .first();
+      const role =
+        roleFromPhone === "admin" || legacyAdmin ? "admin" : roleFromPhone;
+      return {
+        ...profile,
+        phoneNumber,
+        phone: phoneNumber ?? profile.phone ?? null,
+        role,
+      };
+    }
+
+    const baUser = await authComponent.getAnyUserById(ctx, userId);
+    if (!baUser) return null;
+    const legacyAdmin = await ctx.db
+      .query("adminUsers")
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .first();
     return {
-      ...profile,
-      phoneNumber,
-      phone: phoneNumber ?? profile.phone ?? null,
-      role,
+      userId,
+      name: (baUser as { name?: string }).name ?? null,
+      phone: (baUser as { phoneNumber?: string }).phoneNumber ?? null,
+      phoneNumber: (baUser as { phoneNumber?: string }).phoneNumber ?? null,
+      email: (baUser as { email?: string }).email ?? null,
+      role: legacyAdmin ? ("admin" as const) : ("user" as const),
+      verified: (baUser as { emailVerified?: boolean }).emailVerified ?? false,
+      _creationTime:
+        (baUser as { createdAt?: number }).createdAt ?? Date.now(),
     };
   },
 });
 
 export const getUser = usersGetByUserId;
+
+export const listTeamMembers = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const seen = new Set<string>();
+    const members: Array<{
+      userId: string;
+      name?: string | null;
+      phone: string | null;
+      email?: string | null;
+      role: "user" | "admin";
+      canEditRole: boolean;
+    }> = [];
+
+    // 1. userRoles where role === "admin" -> resolve phone -> verifiedPhones -> userId -> userProfiles
+    const adminRoles = await ctx.db
+      .query("userRoles")
+      .collect();
+    const adminPhones = new Set(
+      adminRoles.filter((r) => r.role === "admin").map((r) => r.phoneNumber),
+    );
+
+    const allVerified = await ctx.db.query("verifiedPhones").collect();
+    const userIdByPhone = new Map<string, string>();
+    for (const v of allVerified) {
+      if (v.userId && v.phoneNumber) {
+        const norm = normalizePhone(v.phoneNumber);
+        if (!userIdByPhone.has(norm)) userIdByPhone.set(norm, v.userId);
+      }
+    }
+
+    const allProfiles = await ctx.db.query("userProfiles").collect();
+    const profileByUserId = new Map(allProfiles.map((p) => [p.userId, p]));
+
+    for (const phone of adminPhones) {
+      const userId = userIdByPhone.get(phone);
+      if (!userId || seen.has(userId)) continue;
+      seen.add(userId);
+      const profile = profileByUserId.get(userId);
+      members.push({
+        userId,
+        name: profile?.name ?? null,
+        phone,
+        email: profile?.email ?? null,
+        role: "admin",
+        canEditRole: true,
+      });
+    }
+
+    // 2. adminUsers (email-based) - fetch BA when profile missing name/email
+    const baResult = await ctx.runQuery(components.betterAuth.adapter.findMany, {
+      model: "user",
+      paginationOpts: { numItems: 500, cursor: null },
+    });
+    const baPage =
+      Array.isArray(baResult)
+        ? baResult
+        : ((baResult as { page?: unknown[] })?.page ?? []);
+    const baByUserId = new Map(
+      baPage.map((u: { _id: string }) => [String(u._id), u] as const)
+    );
+
+    const legacyAdmins = await ctx.db.query("adminUsers").collect();
+    for (const { userId } of legacyAdmins) {
+      if (seen.has(userId)) continue;
+      seen.add(userId);
+      const profile = profileByUserId.get(userId);
+      const baUser = baByUserId.get(userId) as
+        | { name?: string; email?: string; phoneNumber?: string }
+        | undefined;
+      const verified = allVerified.find((v) => v.userId === userId);
+      const phone = verified?.phoneNumber
+        ? normalizePhone(verified.phoneNumber)
+        : baUser?.phoneNumber ?? null;
+      members.push({
+        userId,
+        name: profile?.name ?? baUser?.name ?? null,
+        phone,
+        email: profile?.email ?? baUser?.email ?? null,
+        role: "admin",
+        canEditRole: true,
+      });
+    }
+
+    members.sort((a, b) =>
+      (a.name || a.userId).localeCompare(b.name || b.userId),
+    );
+    return members;
+  },
+});
 
 export const setUserRole = mutation({
   args: {
@@ -188,6 +420,28 @@ export const setUserRole = mutation({
       return existing._id;
     }
     return await ctx.db.insert("userRoles", { phoneNumber: normalized, role });
+  },
+});
+
+export const setUserRoleByUserId = mutation({
+  args: {
+    userId: v.string(),
+    role: roleValidator,
+  },
+  handler: async (ctx, { userId, role }) => {
+    await requireAdmin(ctx);
+    const existing = await ctx.db
+      .query("adminUsers")
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .first();
+    if (role === "admin") {
+      if (existing) return existing._id;
+      return await ctx.db.insert("adminUsers", { userId });
+    }
+    if (existing) {
+      await ctx.db.delete(existing._id);
+    }
+    return null;
   },
 });
 
@@ -280,11 +534,52 @@ export const getUserFullData = query({
   handler: async (ctx, { userId }) => {
     await requireAdmin(ctx);
 
-    const profile = await ctx.db
+    let profile = await ctx.db
       .query("userProfiles")
       .withIndex("userId", (q) => q.eq("userId", userId))
       .first();
-    if (!profile) return null;
+
+    if (!profile) {
+      const baUser = await authComponent.getAnyUserById(ctx, userId);
+      if (!baUser) return null;
+      const legacyAdmin = await ctx.db
+        .query("adminUsers")
+        .withIndex("userId", (q) => q.eq("userId", userId))
+        .first();
+      const phoneNumber = (baUser as { phoneNumber?: string }).phoneNumber ?? null;
+      const role = legacyAdmin ? "admin" : "user";
+      const minimalProfile = {
+        userId,
+        name: (baUser as { name?: string }).name ?? null,
+        phone: phoneNumber,
+        phoneNumber,
+        email: (baUser as { email?: string }).email ?? null,
+        role,
+      };
+      return {
+        profile: minimalProfile,
+        orders: [],
+        favorites: [],
+        reviews: [],
+        notifications: [],
+        activity: [],
+        conversationReasons: [],
+        searchLogs: [],
+        knowledgeResearch: [],
+        threads: [],
+        handoffs: [],
+        counts: {
+          orders: 0,
+          favorites: 0,
+          reviews: 0,
+          notifications: 0,
+          searchLogs: 0,
+          knowledgeResearch: 0,
+          threads: 0,
+          handoffs: 0,
+        },
+      };
+    }
 
     const verified = await ctx.db
       .query("verifiedPhones")

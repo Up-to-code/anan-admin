@@ -85,6 +85,42 @@ export const overviewStats = query({
   },
 });
 
+export const getMyAdminStats = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireAdmin(ctx);
+    const [threads, allActivity, recentActivity, handoffs] = await Promise.all([
+      ctx.db
+        .query("threadMetadata")
+        .withIndex("userId", (q) => q.eq("userId", userId))
+        .collect(),
+      ctx.db
+        .query("userActivity")
+        .withIndex("userId", (q) => q.eq("userId", userId))
+        .collect(),
+      ctx.db
+        .query("userActivity")
+        .withIndex("userId", (q) => q.eq("userId", userId))
+        .order("desc")
+        .take(10),
+      ctx.db
+        .query("humanHandoffs")
+        .withIndex("userId", (q) => q.eq("userId", userId))
+        .collect(),
+    ]);
+    return {
+      threadCount: threads.length,
+      activityCount: allActivity.length,
+      handoffsCount: handoffs.length,
+      recentActivity: recentActivity.map((a) => ({
+        action: a.action,
+        channel: a.channel,
+        createdAt: a._creationTime,
+      })),
+    };
+  },
+});
+
 export const dashboardStats = query({
   args: {},
   handler: async (ctx) => {

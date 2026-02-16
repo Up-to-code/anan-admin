@@ -15,6 +15,7 @@ export {
 
 export {
   overviewStats,
+  getMyAdminStats,
   dashboardStats,
   dashboardChartData,
   topSearchedAreas,
@@ -36,10 +37,12 @@ export {
 
 export {
   listUsers,
+  listTeamMembers,
   usersList,
   usersGetByUserId,
   getUser,
   setUserRole,
+  setUserRoleByUserId,
   notificationsList,
   notificationsUnreadCount,
   notificationAcknowledge,

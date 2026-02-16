@@ -8,6 +8,8 @@ import { api } from "convex/_generated/api";
 import {
   LayoutDashboard,
   Users,
+  UsersRound,
+  Bot,
   ShoppingCart,
   Bell,
   Building2,
@@ -53,9 +55,16 @@ interface NavGroupConfig {
 
 const navGroups: NavGroupConfig[] = [
   {
-    title: "عام",
+    title: "الرئيسية",
     items: [
       { title: ar.dashboard, href: "/", icon: LayoutDashboard },
+      { title: ar.agentChat, href: "/agent", icon: Bot },
+    ],
+  },
+  {
+    title: "الفريق والعملاء",
+    items: [
+      { title: ar.team, href: "/team", icon: UsersRound },
       { title: ar.users, href: "/users", icon: Users },
     ],
   },
@@ -88,10 +97,10 @@ const navGroups: NavGroupConfig[] = [
   {
     title: "المحتوى",
     items: [
-      { title: ar.reviews, href: "/reviews", icon: MessageSquareText },
-      { title: ar.favorites, href: "/favorites", icon: Heart },
       { title: ar.prompts, href: "/prompts", icon: Sparkles },
       { title: ar.knowledge, href: "/knowledge", icon: BookOpen },
+      { title: ar.reviews, href: "/reviews", icon: MessageSquareText },
+      { title: ar.favorites, href: "/favorites", icon: Heart },
     ],
   },
   {
