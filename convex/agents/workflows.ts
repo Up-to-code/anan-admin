@@ -53,7 +53,12 @@ export const startGenerateResponseWorkflow = internalAction({
     ),
   },
   handler: async (ctx, args): Promise<string> => {
-    const wf = internal.agents.workflows.generateResponseWorkflow;
-    return workflow.start(ctx, wf, args);
+    return workflow.start(
+      ctx,
+      generateResponseWorkflow as unknown as Parameters<
+        typeof workflow.start
+      >[1],
+      args
+    );
   },
 });

@@ -41,7 +41,7 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
       requireEmailVerification: false,
     },
     plugins: [
-      expo(),
+      expo() as never,
       convex({ authConfig }),
       phoneNumber({
         allowedAttempts: 10,
