@@ -20,6 +20,8 @@ Next.js admin dashboard for the Anan platform. Uses Convex for backend.
    - `NEXT_PUBLIC_CONVEX_URL` – Your Convex deployment URL (e.g. `https://xxx.convex.cloud`)
    - `NEXT_PUBLIC_CONVEX_SITE_URL` – Your Convex site URL (e.g. `https://xxx.convex.site`)
    - `NEXT_PUBLIC_SITE_URL` – Your app URL (e.g. `https://admin.yourdomain.com`)
+   - `SITE_URL` – Convex auth base URL (usually your Convex site URL)
+   - `BETTER_AUTH_TRUSTED_ORIGINS` – Comma-separated allowed origins (include your Vercel admin URL, e.g. `https://anan-admin.vercel.app`)
 
 4. **Convex backend** – Deploy Convex from this repo:
    ```bash

@@ -16,27 +16,38 @@ import authConfig from "./auth.config";
 
 const siteUrl =
   process.env.SITE_URL ?? "https://outstanding-mastiff-930.convex.site";
+const trustedOriginsFromEnv = (
+  process.env.BETTER_AUTH_TRUSTED_ORIGINS ?? process.env.TRUSTED_ORIGINS ?? ""
+)
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const trustedOrigins = Array.from(
+  new Set([
+    siteUrl,
+    "https://anan-admin.vercel.app",
+    "anan://",
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:3002",
+    "http://localhost:3003",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3002",
+    "http://127.0.0.1:3003",
+    "http://192.168.1.75:3002",
+    // Expo dev client (replace IP with your machine's if different)
+    "exp://192.168.1.75:8081",
+    "exp://localhost:8081",
+    ...trustedOriginsFromEnv,
+  ]),
+);
 
 export const authComponent = createClient<DataModel>(components.betterAuth);
 
 export const createAuth = (ctx: GenericCtx<DataModel>) => {
   return betterAuth({
     baseURL: siteUrl,
-    trustedOrigins: [
-      siteUrl,
-      "anan://",
-      "http://localhost:3000",
-      "http://localhost:3001",
-      "http://localhost:3002",
-      "http://localhost:3003",
-      "http://127.0.0.1:3000",
-      "http://127.0.0.1:3002",
-      "http://127.0.0.1:3003",
-      "http://192.168.1.75:3002",
-      // Expo dev client (replace IP with your machine's if different)
-      "exp://192.168.1.75:8081",
-      "exp://localhost:8081",
-    ],
+    trustedOrigins,
     database: authComponent.adapter(ctx),
     emailAndPassword: {
       enabled: true,
