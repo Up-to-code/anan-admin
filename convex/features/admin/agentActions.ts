@@ -59,6 +59,149 @@ const mediaEntityTypeValidator = v.union(
   v.literal("partner")
 );
 
+const adminTaskScopeValidator = v.union(
+  v.literal("users"),
+  v.literal("orders"),
+  v.literal("properties"),
+  v.literal("banks"),
+  v.literal("knowledge"),
+  v.literal("prompts"),
+  v.literal("analytics"),
+  v.literal("system")
+);
+
+const adminTaskModeValidator = v.union(
+  v.literal("plan_then_execute"),
+  v.literal("plan_only"),
+  v.literal("execute_only"),
+  v.literal("audit")
+);
+
+const adminTaskOutputStyleValidator = v.union(
+  v.literal("brief"),
+  v.literal("detailed"),
+  v.literal("checklist")
+);
+
+function buildAdminTaskPrompt(args: {
+  goal: string;
+  scope: "users" | "orders" | "properties" | "banks" | "knowledge" | "prompts" | "analytics" | "system";
+  mode: "plan_then_execute" | "plan_only" | "execute_only" | "audit";
+  outputStyle: "brief" | "detailed" | "checklist";
+  context?: string;
+  acceptanceCriteria?: string[];
+  requirements: {
+    needUi: boolean;
+    needBackend: boolean;
+    needTests: boolean;
+    needRisks: boolean;
+    needRollback: boolean;
+    needMetrics: boolean;
+  };
+}): string {
+  const scopeLabel = (() => {
+    if (args.scope === "users") return "المستخدمون";
+    if (args.scope === "orders") return "الطلبات";
+    if (args.scope === "properties") return "العقارات";
+    if (args.scope === "banks") return "البنوك";
+    if (args.scope === "knowledge") return "المعرفة";
+    if (args.scope === "prompts") return "البرومبتات";
+    if (args.scope === "analytics") return "التحليلات";
+    return "النظام";
+  })();
+
+  const modeLabel = (() => {
+    if (args.mode === "plan_only") return "خطة فقط";
+    if (args.mode === "execute_only") return "تنفيذ مباشر";
+    if (args.mode === "audit") return "تدقيق ومراجعة";
+    return "خطة ثم تنفيذ";
+  })();
+
+  const styleLabel = (() => {
+    if (args.outputStyle === "brief") return "مختصر";
+    if (args.outputStyle === "checklist") return "قائمة تنفيذ";
+    return "تفصيلي";
+  })();
+
+  const requiredLines: string[] = [];
+  if (args.requirements.needUi) requiredLines.push("- تحديث واجهات الأدمن إذا كانت متأثرة.");
+  if (args.requirements.needBackend) requiredLines.push("- تحديث الباكند وواجهات API إذا لزم.");
+  if (args.requirements.needTests) {
+    requiredLines.push("- إضافة/تحديث اختبارات أو على الأقل smoke checks.");
+  }
+  if (args.requirements.needRisks) {
+    requiredLines.push("- ذكر المخاطر والانحدارات المحتملة.");
+  }
+  if (args.requirements.needRollback) {
+    requiredLines.push("- تضمين خطة rollback واضحة.");
+  }
+  if (args.requirements.needMetrics) {
+    requiredLines.push("- ذكر كيف نقيس النجاح بعد التنفيذ.");
+  }
+  if (requiredLines.length === 0) {
+    requiredLines.push("- التزم بأفضل ممارسات التنفيذ والتحقق.");
+  }
+
+  const criteriaLines =
+    args.acceptanceCriteria && args.acceptanceCriteria.length > 0
+      ? `\nمعايير القبول:\n${args.acceptanceCriteria.map((line) => `- ${line}`).join("\n")}`
+      : "";
+  const contextBlock = args.context ? `\nالسياق:\n${args.context}` : "";
+  const outputInstruction =
+    args.outputStyle === "checklist"
+      ? "الإخراج المطلوب بصيغة قائمة تنفيذية واضحة."
+      : args.outputStyle === "brief"
+        ? "الإخراج المطلوب مختصر وواضح."
+        : "الإخراج المطلوب تفصيلي مع خطوات عملية.";
+
+  return `أنت مساعد إداري تقني في مشروع ANAN.
+
+المهمة الرئيسية:
+${args.goal}
+
+النطاق:
+- القسم: ${scopeLabel}
+- نمط العمل: ${modeLabel}
+- أسلوب الإخراج: ${styleLabel}
+
+المتطلبات الإلزامية:
+${requiredLines.join("\n")}
+${contextBlock}
+${criteriaLines}
+
+تعليمات التنفيذ:
+1) افهم الوضع الحالي بسرعة.
+2) قدم خطة عمل مرتبة (P0 ثم P1).
+3) ${
+    args.mode === "plan_only"
+      ? "توقف عند الخطة ولا تنفذ تغييرات."
+      : "نفذ التعديلات المطلوبة بالكامل."
+  }
+4) اعرض ما تم تغييره وكيف نتحقق منه.
+5) ${outputInstruction}`;
+}
+
+async function resolveAdminThread(
+  ctx: MutationCtx,
+  args: { threadId?: string; title?: string; adminUserId: string }
+): Promise<string> {
+  const scopedUserId = `admin-${args.adminUserId}`;
+  if (args.threadId) {
+    const thread = await ctx.runQuery(components.agent.threads.getThread, {
+      threadId: args.threadId,
+    });
+    if (!thread || thread.userId !== scopedUserId) {
+      throw new Error("Thread not found or access denied");
+    }
+    return args.threadId;
+  }
+
+  return await createThread(ctx, components.agent, {
+    userId: scopedUserId,
+    title: args.title?.trim() || "Admin Task",
+  });
+}
+
 async function getAdminUserId(ctx: Parameters<typeof requireAdmin>[0]): Promise<string> {
   const userId = await requireAdmin(ctx);
   return userId;
@@ -190,13 +333,7 @@ export const createAdminThread = mutation({
     title: v.optional(v.string()),
   },
   handler: async (ctx, { title }) => {
-    // Require admin authentication
-    const authUser = await authComponent.getAuthUser(ctx);
-    if (!authUser) {
-      throw new Error("Admin authentication required");
-    }
-    
-    const userId = authUser.userId ?? String(authUser._id);
+    const userId = await getAdminUserId(ctx);
     
     const threadId = await createThread(ctx, components.agent, {
       userId: `admin-${userId}`,
@@ -216,11 +353,7 @@ export const sendAdminMessage = mutation({
     body: v.string(),
   },
   handler: async (ctx, { threadId, body }) => {
-    // Require admin authentication
-    const authUser = await authComponent.getAuthUser(ctx);
-    if (!authUser) {
-      throw new Error("Admin authentication required");
-    }
+    await getAdminUserId(ctx);
     
     const { messageId } = await saveMessage(ctx, components.agent, {
       threadId,
@@ -231,6 +364,69 @@ export const sendAdminMessage = mutation({
       threadId,
       promptMessageId: messageId,
     });
+  },
+});
+
+/**
+ * Send a structured admin task request to the agent.
+ * Creates a thread when missing, builds the final prompt server-side, and schedules response.
+ */
+export const sendAdminTaskRequest = mutation({
+  args: {
+    threadId: v.optional(v.string()),
+    goal: v.string(),
+    scope: adminTaskScopeValidator,
+    mode: adminTaskModeValidator,
+    outputStyle: adminTaskOutputStyleValidator,
+    context: v.optional(v.string()),
+    acceptanceCriteria: v.optional(v.array(v.string())),
+    requirements: v.object({
+      needUi: v.boolean(),
+      needBackend: v.boolean(),
+      needTests: v.boolean(),
+      needRisks: v.boolean(),
+      needRollback: v.boolean(),
+      needMetrics: v.boolean(),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const adminUserId = await getAdminUserId(ctx);
+    const goal = args.goal.trim();
+    if (!goal) {
+      throw new Error("Task goal is required");
+    }
+
+    const acceptanceCriteria = (args.acceptanceCriteria ?? [])
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    const builtPrompt = buildAdminTaskPrompt({
+      goal,
+      scope: args.scope,
+      mode: args.mode,
+      outputStyle: args.outputStyle,
+      context: args.context?.trim() || undefined,
+      acceptanceCriteria,
+      requirements: args.requirements,
+    });
+
+    const threadId = await resolveAdminThread(ctx, {
+      adminUserId,
+      threadId: args.threadId,
+      title: goal.slice(0, 60),
+    });
+
+    const { messageId } = await saveMessage(ctx, components.agent, {
+      threadId,
+      prompt: builtPrompt,
+    });
+
+    await ctx.scheduler.runAfter(0, internal.features.admin.agentActions.generateAdminResponse, {
+      threadId,
+      promptMessageId: messageId,
+    });
+
+    return { threadId, messageId };
   },
 });
 

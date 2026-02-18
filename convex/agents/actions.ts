@@ -26,7 +26,7 @@ import { buildAgentInstructions } from "./anan/instructions";
 import { createRealEstateAgent } from "../features/agent/factory";
 import { formatForChannel, type OfferBlock } from "../channels/formatters";
 import { authComponent } from "../auth";
-import { optionalAuth, requireAdmin } from "../lib/auth";
+import { isAdmin, optionalAuth, requireAdmin } from "../lib/auth";
 import {
   detectPreferredLanguage,
   isLikelyLanguageMismatch,
@@ -405,7 +405,7 @@ export const generateReplyAndReturnText = internalAction({
       messageLength: message.length,
     });
     try {
-      const threads = await ctx.runQuery(api.agents.actions.listThreads, {
+      const threads = await ctx.runQuery(components.agent.threads.listThreadsByUserId, {
         userId,
         paginationOpts: { numItems: 1, cursor: null },
       });
@@ -562,20 +562,18 @@ IMPORTANT: Use this context. Do NOT ask for information already in memory. If us
         textLength: guardedText.length,
       });
 
-      if (toolCalls.length > 0 || toolResults.length > 0) {
-        try {
-          await ctx.runMutation(internal.agents.actions.logAgentTrace, {
-            threadId,
-            userId,
-            channel,
-            userMessage: message,
-            toolCalls,
-            toolResults,
-            assistantMessage: guardedText,
-          });
-        } catch (err) {
-          console.warn("[generateReplyAndReturnText] trace log failed", err);
-        }
+      try {
+        await ctx.runMutation(internal.agents.actions.logAgentTrace, {
+          threadId,
+          userId,
+          channel,
+          userMessage: message,
+          toolCalls,
+          toolResults,
+          assistantMessage: guardedText,
+        });
+      } catch (err) {
+        console.warn("[generateReplyAndReturnText] trace log failed", err);
       }
 
       return {
@@ -685,9 +683,24 @@ export const listThreads = query({
     userId: v.optional(v.string()),
     paginationOpts: paginationOptsValidator,
   },
-  handler: async (ctx, { userId: _clientUserId, paginationOpts }) => {
+  handler: async (ctx, { userId: requestedUserId, paginationOpts }) => {
     const authUserId = await optionalAuth(ctx);
-    const userId = authUserId ?? undefined;
+    let userId: string | undefined;
+    if (authUserId) {
+      if (requestedUserId && requestedUserId !== authUserId) {
+        const admin = await isAdmin(ctx);
+        if (!admin) {
+          throw new Error("Access denied: cannot view another user's threads");
+        }
+        userId = requestedUserId;
+      } else {
+        userId = authUserId;
+      }
+    } else if (requestedUserId?.startsWith("anon-")) {
+      userId = requestedUserId;
+    } else {
+      return { page: [], isDone: true, continueCursor: null };
+    }
     return ctx.runQuery(components.agent.threads.listThreadsByUserId, {
       userId,
       paginationOpts,
@@ -701,9 +714,24 @@ export const searchThreads = query({
     query: v.string(),
     limit: v.optional(v.number()),
   },
-  handler: async (ctx, { userId: _clientUserId, query: searchQuery, limit = 50 }) => {
+  handler: async (ctx, { userId: requestedUserId, query: searchQuery, limit = 50 }) => {
     const authUserId = await optionalAuth(ctx);
-    const userId = authUserId ?? undefined;
+    let userId: string | undefined;
+    if (authUserId) {
+      if (requestedUserId && requestedUserId !== authUserId) {
+        const admin = await isAdmin(ctx);
+        if (!admin) {
+          throw new Error("Access denied: cannot search another user's threads");
+        }
+        userId = requestedUserId;
+      } else {
+        userId = authUserId;
+      }
+    } else if (requestedUserId?.startsWith("anon-")) {
+      userId = requestedUserId;
+    } else {
+      return [];
+    }
     return ctx.runQuery(components.agent.threads.searchThreadTitles, {
       userId,
       query: searchQuery,

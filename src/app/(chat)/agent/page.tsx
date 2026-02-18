@@ -16,6 +16,7 @@ export default function AgentPage() {
     deletingThreadId,
     messagesEndRef,
     handleSend,
+    handleSendTask,
     handleNewChat,
     handleSelectThread,
     handleDeleteThread,
@@ -46,6 +47,7 @@ export default function AgentPage() {
         onDeleteThread={(id) => void handleDeleteThread(id)}
         onRenameThread={handleRenameThread}
         onSendMessage={handleSend}
+        onSendTask={handleSendTask}
         onSlashCommand={handleSlashCommand}
         onRewriteText={handleSlashCommand}
         onUpdatePendingPayload={async (actionId, payload) => {

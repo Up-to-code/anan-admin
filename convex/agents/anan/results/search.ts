@@ -29,6 +29,7 @@ export type PropertyCardCandidate = {
 export type PropertyFinding = {
   sourceRank: number;
   sourceUrl: string;
+  sourceTitle?: string;
   cardRank: number;
   propertyUrl?: string;
   title: string;
@@ -36,6 +37,8 @@ export type PropertyFinding = {
   priceHint?: string;
   locationHint?: string;
   imageUrls: string[];
+  detailFetched?: boolean;
+  detailSourceUrl?: string;
   offerDetails?: string;
   confidence?: number;
   bathrooms?: string;

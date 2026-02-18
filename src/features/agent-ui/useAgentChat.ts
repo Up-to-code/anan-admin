@@ -6,7 +6,12 @@ import { useUIMessages } from "@convex-dev/agent/react";
 import { toast } from "sonner";
 import { api } from "convex/_generated/api";
 import { ar } from "@/lib/ar";
-import type { AgentMessage, AgentThread, PendingAction } from "./types";
+import type {
+  AdminTaskRequest,
+  AgentMessage,
+  AgentThread,
+  PendingAction,
+} from "./types";
 
 function useAdminMessages(threadId: string | null) {
   const args: { threadId: string } | "skip" = threadId ? { threadId } : "skip";
@@ -29,6 +34,7 @@ export function useAgentChat() {
 
   const createThread = useMutation(api.features.admin.agentActions.createAdminThread);
   const sendMessage = useMutation(api.features.admin.agentActions.sendAdminMessage);
+  const sendTaskRequest = useMutation(api.features.admin.agentActions.sendAdminTaskRequest);
   const renameThread = useMutation(api.features.admin.agentActions.renameAdminThread);
   const deleteThread = useMutation(api.features.admin.agentActions.deleteAdminThread);
   const rewriteAdminCopy = useAction(api.features.admin.agentActions.rewriteAdminCopy);
@@ -143,6 +149,28 @@ export function useAgentChat() {
     }
   }, [isSending, isThinking, isCreatingThread, createThread]);
 
+  const handleSendTask = useCallback(
+    async (task: AdminTaskRequest) => {
+      if (!task.goal.trim()) return;
+      setIsSending(true);
+      try {
+        const result = await sendTaskRequest({
+          ...task,
+          threadId: threadId ?? task.threadId,
+        });
+        if (!threadId || threadId !== result.threadId) {
+          setThreadId(result.threadId);
+        }
+      } catch (error) {
+        console.error("Send task error:", error);
+        toast.error(ar.sendFailed);
+      } finally {
+        setIsSending(false);
+      }
+    },
+    [sendTaskRequest, threadId]
+  );
+
   const handleSelectThread = useCallback((targetThreadId: string) => {
     setThreadId(targetThreadId);
   }, []);
@@ -190,6 +218,7 @@ export function useAgentChat() {
     deletingThreadId,
     messagesEndRef,
     handleSend,
+    handleSendTask,
     handleNewChat,
     handleSelectThread,
     handleDeleteThread,

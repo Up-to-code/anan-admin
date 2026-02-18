@@ -5,7 +5,7 @@
 import { mutation, query } from "../_generated/server";
 import { ConvexError, v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
-import { api } from "../_generated/api";
+import { api, components } from "../_generated/api";
 import {
   requireAuth,
   requireAdmin,
@@ -99,7 +99,7 @@ export const conversationsListThreads = query({
   returns: v.any(),
   handler: async (ctx, args): Promise<unknown> => {
     await requireAdmin(ctx);
-    return ctx.runQuery(api.agents.actions.listThreads, {
+    return ctx.runQuery(components.agent.threads.listThreadsByUserId, {
       userId: args.userId,
       paginationOpts: args.paginationOpts,
     });

@@ -387,6 +387,7 @@ export const logKnowledgeResearch = mutation({
       v.object({
         sourceRank: v.number(),
         sourceUrl: v.string(),
+        sourceTitle: v.optional(v.string()),
         cardRank: v.number(),
         propertyUrl: v.optional(v.string()),
         title: v.string(),
@@ -394,6 +395,8 @@ export const logKnowledgeResearch = mutation({
         priceHint: v.optional(v.string()),
         locationHint: v.optional(v.string()),
         imageUrls: v.array(v.string()),
+        detailFetched: v.optional(v.boolean()),
+        detailSourceUrl: v.optional(v.string()),
         offerDetails: v.optional(v.string()),
         confidence: v.optional(v.number()),
         bathrooms: v.optional(v.string()),
@@ -414,6 +417,7 @@ export const logKnowledgeResearch = mutation({
 const propertyFindingValidator = v.object({
   sourceRank: v.number(),
   sourceUrl: v.string(),
+  sourceTitle: v.optional(v.string()),
   cardRank: v.number(),
   propertyUrl: v.optional(v.string()),
   title: v.string(),
@@ -421,6 +425,8 @@ const propertyFindingValidator = v.object({
   priceHint: v.optional(v.string()),
   locationHint: v.optional(v.string()),
   imageUrls: v.array(v.string()),
+  detailFetched: v.optional(v.boolean()),
+  detailSourceUrl: v.optional(v.string()),
   offerDetails: v.optional(v.string()),
   confidence: v.optional(v.number()),
   bathrooms: v.optional(v.string()),

@@ -45,9 +45,27 @@ import {
   MapPin,
   Database,
   ExternalLink,
+  Maximize2,
+  Minimize2,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageHeader, StatCard } from "@/components/admin/ui";
+
+const URL_REGEX = /(https?:\/\/[^\s<>"'`)\]]+)/g;
+const MARKDOWN_IMAGE_REGEX = /!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g;
+const IMAGE_EXT_REGEX = /\.(apng|avif|gif|jpe?g|png|svg|webp|bmp)(?:$|[?#])/i;
+const IMAGE_HOST_HINTS = [
+  "imagedelivery.net",
+  "images.",
+  "img.",
+  "cloudinary",
+  "unsplash",
+  "bayut.",
+  "propertyfinder.",
+  "tranio.",
+  "imtilak.",
+];
 
 function formatNumber(n: number | undefined): string {
   if (n === undefined || n === null) return "٠";
@@ -61,6 +79,53 @@ function formatTokens(n: number | undefined): string {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
   return n.toLocaleString("ar-SA");
+}
+
+function normalizeDetectedUrl(raw: string): string {
+  return raw.trim().replace(/[),.]+$/g, "");
+}
+
+function isLikelyImageUrl(url: string): boolean {
+  if (IMAGE_EXT_REGEX.test(url)) return true;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    const path = parsed.pathname.toLowerCase();
+    if (IMAGE_HOST_HINTS.some((hint) => host.includes(hint))) return true;
+    if (path.includes("/image") || path.includes("/images/")) return true;
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+function extractConversationMedia(rawText: string): {
+  text: string;
+  imageUrls: string[];
+  linkUrls: string[];
+} {
+  let text = rawText || "";
+  const allUrls = new Set<string>();
+  for (const match of text.matchAll(MARKDOWN_IMAGE_REGEX)) {
+    const url = normalizeDetectedUrl(match[1] || "");
+    if (url) allUrls.add(url);
+  }
+  for (const match of text.matchAll(URL_REGEX)) {
+    const url = normalizeDetectedUrl(match[1] || "");
+    if (url) allUrls.add(url);
+  }
+
+  const imageUrls = Array.from(allUrls).filter(isLikelyImageUrl);
+  for (const imageUrl of imageUrls) {
+    text = text.split(imageUrl).join("");
+  }
+  text = text.replace(MARKDOWN_IMAGE_REGEX, "").trim();
+
+  return {
+    text,
+    imageUrls,
+    linkUrls: Array.from(allUrls).filter((url) => !imageUrls.includes(url)),
+  };
 }
 
 function LoadingSkeleton() {
@@ -114,6 +179,8 @@ function OrderCard({ order }: { order: any }) {
 function ChatMessage({ message }: { message: any }) {
   const isUser = message.role === "user";
   const text = message.text || message.content || message.body || "";
+  const parsed = React.useMemo(() => extractConversationMedia(text), [text]);
+  const [activeImageUrl, setActiveImageUrl] = React.useState<string | null>(null);
   const time = message._creationTime
     ? new Date(message._creationTime).toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit" })
     : "";
@@ -130,13 +197,71 @@ function ChatMessage({ message }: { message: any }) {
         "max-w-[75%] rounded-2xl px-4 py-2.5",
         isUser ? "bg-primary text-primary-foreground rounded-tl-md" : "bg-muted rounded-tr-md"
       )}>
-        <p className="text-sm whitespace-pre-wrap">{text}</p>
+        {parsed.text ? (
+          <p className="text-sm whitespace-pre-wrap">{parsed.text}</p>
+        ) : null}
+        {parsed.imageUrls.length > 0 ? (
+          <div className={cn("mt-2 grid gap-2", parsed.imageUrls.length === 1 ? "grid-cols-1" : "grid-cols-2")}>
+            {parsed.imageUrls.slice(0, 6).map((imageUrl) => (
+              <button
+                type="button"
+                key={imageUrl}
+                onClick={() => setActiveImageUrl(imageUrl)}
+                className="overflow-hidden rounded-lg border border-border/60 bg-background/20"
+              >
+                <img
+                  src={imageUrl}
+                  alt="Conversation media"
+                  className="h-28 w-full object-cover"
+                  loading="lazy"
+                />
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {parsed.linkUrls.length > 0 ? (
+          <div className="mt-2 space-y-1">
+            {parsed.linkUrls.slice(0, 3).map((url) => (
+              <a
+                key={url}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  "block text-[11px] underline truncate",
+                  isUser ? "text-primary-foreground/80" : "text-muted-foreground"
+                )}
+              >
+                {url}
+              </a>
+            ))}
+          </div>
+        ) : null}
         {time && (
           <p className={cn("text-[10px] mt-1", isUser ? "text-primary-foreground/60" : "text-muted-foreground")}>
             {time}
           </p>
         )}
       </div>
+      {activeImageUrl ? (
+        <div className="fixed inset-0 z-[90] bg-black/90 p-4" onClick={() => setActiveImageUrl(null)}>
+          <button
+            type="button"
+            className="absolute top-4 left-4 rounded-full bg-background/20 p-2 text-white"
+            onClick={() => setActiveImageUrl(null)}
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <div className="flex h-full w-full items-center justify-center">
+            <img
+              src={activeImageUrl}
+              alt="Full image"
+              className="max-h-[92vh] max-w-[92vw] rounded-lg object-contain"
+              onClick={(event) => event.stopPropagation()}
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -147,11 +272,11 @@ function ConversationList({ threads, activeThreadId, onSelect }: {
   onSelect: (id: string) => void;
 }) {
   return (
-    <div className="w-72 border-l shrink-0">
+    <div className="w-72 border-l shrink-0 flex flex-col">
       <div className="p-3 border-b">
         <h3 className="font-semibold text-sm">المحادثات</h3>
       </div>
-      <ScrollArea className="h-[400px]">
+      <ScrollArea className="flex-1">
         <div className="p-2 space-y-1">
           {threads.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground text-sm">لا توجد محادثات</div>
@@ -210,7 +335,7 @@ function ChatView({ messages, loading }: { messages: any[]; loading: boolean }) 
   }
 
   return (
-    <ScrollArea ref={scrollRef} className="flex-1 h-[400px]">
+    <ScrollArea ref={scrollRef} className="flex-1">
       <div className="p-4 space-y-4">
         {messages.map((msg, i) => (
           <ChatMessage key={msg._id || i} message={msg} />
@@ -375,6 +500,7 @@ export default function UserDetailPage() {
   const [summary, setSummary] = React.useState<string | null>(null);
   const [summaryLoading, setSummaryLoading] = React.useState(false);
   const [activeThreadId, setActiveThreadId] = React.useState<string | null>(null);
+  const [conversationFullMode, setConversationFullMode] = React.useState(false);
 
   const user = useQuery(api.features.admin.api.getUser, { userId });
   const userFullData = useQuery(api.features.admin.api.getUserFullData, { userId });
@@ -408,6 +534,20 @@ export default function UserDetailPage() {
     }
   }, [userThreads, activeThreadId]);
 
+  React.useEffect(() => {
+    if (!conversationFullMode) return;
+    const onEsc = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setConversationFullMode(false);
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onEsc);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onEsc);
+    };
+  }, [conversationFullMode]);
+
   if (user === undefined) return <LoadingSkeleton />;
   if (!user) {
     return (
@@ -439,6 +579,12 @@ export default function UserDetailPage() {
 
   return (
     <div className="space-y-6">
+      {conversationFullMode ? (
+        <div
+          className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm"
+          onClick={() => setConversationFullMode(false)}
+        />
+      ) : null}
       <PageHeader
         title={user.name || ar.unnamed}
         description={user.phone || user.email || "-"}
@@ -563,13 +709,29 @@ export default function UserDetailPage() {
         </TabsContent>
 
         <TabsContent value="conversation" className="mt-6">
-          <Card className="overflow-hidden">
-            <div className="flex h-[500px]">
+          <Card
+            className={cn(
+              "overflow-hidden",
+              conversationFullMode && "fixed inset-6 z-50 m-0 border bg-background"
+            )}
+          >
+            <div className={cn("flex", conversationFullMode ? "h-[calc(100vh-6rem)]" : "h-[500px]")}>
               <ConversationList threads={threads} activeThreadId={activeThreadId} onSelect={setActiveThreadId} />
               <div className="flex-1 flex flex-col">
-                <div className="p-3 border-b flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4" />
-                  <span className="font-medium text-sm">{threads.find(t => t._id === activeThreadId)?.title || "المحادثة"}</span>
+                <div className="p-3 border-b flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <MessageSquare className="h-4 w-4" />
+                    <span className="font-medium text-sm truncate">{threads.find(t => t._id === activeThreadId)?.title || "المحادثة"}</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setConversationFullMode((prev) => !prev)}
+                  >
+                    {conversationFullMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                    {conversationFullMode ? "تصغير" : "ملء الشاشة"}
+                  </Button>
                 </div>
                 <ChatView messages={messages} loading={!!activeThreadId && threadMessages === undefined} />
                 <TraceView traces={threadTraces || []} />
