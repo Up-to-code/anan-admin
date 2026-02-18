@@ -2,8 +2,7 @@ import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
 import schema from "./schema";
 import { internal } from "./_generated/api";
-
-const modules = import.meta.glob("./**/*.ts");
+import { modules } from "./test.setup";
 
 test("userProfiles upsert creates new profile", async () => {
   const t = convexTest(schema, modules);

@@ -163,11 +163,11 @@ http.route({
     }
     
     const body = await request.json().catch(() => ({}));
-    const { threadId, message } = body as {
+    const { threadId, message, userId: clientUserId } = body as {
       threadId?: string;
       message?: string;
+      userId?: string;
     };
-    // Part E: Do not trust client-provided userId; backend resolves from auth or generates anon-uuid.
     if (!message || typeof message !== "string") {
       return new Response(JSON.stringify({ error: "message required" }), {
         status: 400,
@@ -191,21 +191,33 @@ http.route({
         const session = await auth.api.getSession({ headers: request.headers });
         authUser = session?.user ? { id: session.user.id } : null;
       } catch {
-        // Auth not available or invalid, continue with anonymous
+        // Auth not available or invalid
+      }
+      const anonymousUserId =
+        !authUser &&
+        typeof clientUserId === "string" &&
+        clientUserId.startsWith("anon-")
+          ? clientUserId
+          : undefined;
+      if (!authUser && !anonymousUserId) {
+        return new Response(
+          JSON.stringify({ error: "Authentication required" }),
+          { status: 401, headers: { "Content-Type": "application/json" } },
+        );
       }
 
       let tid = threadId;
       if (!tid) {
-        // Pass only server-resolved auth user id when present; never pass client-provided userId for anonymous.
         const { threadId: newId } = await ctx.runMutation(
           api.agents.actions.createThreadAction,
-          authUser ? { userId: authUser.id } : {}
+          authUser ? { userId: authUser.id } : { userId: anonymousUserId }
         );
         tid = newId;
       }
       await ctx.runMutation(api.agents.actions.sendMessage, {
         threadId: tid,
         body: message,
+        userId: authUser?.id ?? anonymousUserId,
         channel: detectChannel({ type: "api_chat", headers: request.headers }),
       });
       return new Response(

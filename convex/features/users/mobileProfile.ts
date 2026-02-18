@@ -1,6 +1,7 @@
 import { mutation, query } from "../../_generated/server";
 import { v } from "convex/values";
 import { optionalAuth, getAuthUserId } from "../../lib/auth";
+import { ROLE_USER } from "../../roles";
 
 export const get = query({
     args: {},
@@ -78,6 +79,7 @@ export const update = mutation({
             // Create if doesn't exist
             await ctx.db.insert("userProfiles", {
                 userId,
+                role: ROLE_USER,
                 ...profileUpdates,
             });
         }

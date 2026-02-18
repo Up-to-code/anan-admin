@@ -115,11 +115,31 @@ export async function getUserRoleByPhone(
 }
 
 /**
+ * Get role by userId from userProfiles.
+ * Returns "user" if profile/role is missing.
+ */
+export async function getUserRoleByUserId(
+  ctx: AnyCtx,
+  userId: string
+): Promise<"user" | "admin"> {
+  const profile = await ctx.db
+    .query("userProfiles")
+    .withIndex("userId", (q) => q.eq("userId", userId))
+    .first();
+  return profile?.role ?? "user";
+}
+
+/**
  * Require admin access. Throws if the current user is not an admin.
  * Checks both the new userRoles table (by phone) and legacy adminUsers table.
  */
 export async function requireAdmin(ctx: AnyCtx): Promise<string> {
   const userId = await requireAuth(ctx);
+
+  // Prefer userId-based role for admin app users (works even when no verified phone exists).
+  const profileRole = await getUserRoleByUserId(ctx, userId);
+  if (profileRole === ROLE_ADMIN) return userId;
+
   const phone = await getAuthUserPhone(ctx);
 
   // Check new role-based system

@@ -249,20 +249,39 @@ export const sendMessage = mutation({
   args: {
     threadId: v.string(),
     body: v.string(),
+    userId: v.optional(v.string()),
     channel: v.optional(
       v.union(v.literal("whatsapp"), v.literal("app"), v.literal("web")),
     ),
   },
-  handler: async (ctx, { threadId, body, channel }) => {
+  handler: async (ctx, { threadId, body, userId: clientUserId, channel }) => {
     debugLog("actions.sendMessage", "start", {
       threadId,
       channel,
       bodyLength: body.length,
     });
+    let authUserId: string | undefined;
     try {
-      await authComponent.getAuthUser(ctx);
+      const authUser = await authComponent.getAuthUser(ctx);
+      authUserId =
+        authUser?.userId ?? (authUser?._id ? String(authUser._id) : undefined);
     } catch {
-      // Allow anonymous
+      authUserId = undefined;
+    }
+    const callerUserId =
+      authUserId ??
+      (clientUserId?.startsWith("anon-") ? clientUserId : undefined);
+    if (!callerUserId) {
+      throw new Error("Authentication required");
+    }
+    const thread = await ctx.runQuery(components.agent.threads.getThread, {
+      threadId,
+    });
+    if (!thread) {
+      throw new Error("Thread not found");
+    }
+    if (thread.userId !== callerUserId) {
+      throw new Error("Access denied: thread ownership mismatch");
     }
     const { messageId } = await saveMessage(ctx, components.agent, {
       threadId,
@@ -278,9 +297,6 @@ export const sendMessage = mutation({
         channel,
       },
     );
-    const thread = await ctx.runQuery(components.agent.threads.getThread, {
-      threadId,
-    });
     await ctx.runMutation(internal.agents.actions.touchThreadMetadata, {
       threadId,
       userId: thread?.userId ?? undefined,
@@ -584,6 +600,7 @@ IMPORTANT: Use this context. Do NOT ask for information already in memory. If us
 export const getThreadMessages = query({
   args: {
     threadId: v.string(),
+    userId: v.optional(v.string()),
     paginationOpts: paginationOptsValidator,
     streamArgs: v.optional(vStreamArgs),
     allowAdmin: v.optional(v.boolean()),
@@ -599,16 +616,22 @@ export const getThreadMessages = query({
       const authUser = await authComponent.getAuthUser(ctx);
       currentUserId =
         authUser?.userId ?? (authUser?._id ? String(authUser._id) : null);
-    } catch {}
+    } catch {
+      currentUserId = null;
+    }
 
     if (args.allowAdmin) {
       await requireAdmin(ctx);
-    } else if (
-      thread.userId &&
-      currentUserId &&
-      thread.userId !== currentUserId
-    ) {
-      throw new Error("Access denied: you can only view your own threads");
+    } else {
+      const callerUserId =
+        currentUserId ??
+        (args.userId?.startsWith("anon-") ? args.userId : null);
+      if (!callerUserId) {
+        throw new Error("Authentication required");
+      }
+      if (!thread.userId || thread.userId !== callerUserId) {
+        throw new Error("Access denied: you can only view your own threads");
+      }
     }
 
     const paginated = await listUIMessages(ctx, components.agent, {
@@ -690,25 +713,30 @@ export const searchThreads = query({
 });
 
 export const deleteThread = mutation({
-  args: { threadId: v.string() },
-  handler: async (ctx, { threadId }) => {
-    const authUser = await authComponent.getAuthUser(ctx);
-    const userId =
-      authUser.userId && authUser.userId !== null
-        ? authUser.userId
-        : String(authUser._id);
+  args: { threadId: v.string(), userId: v.optional(v.string()) },
+  handler: async (ctx, { threadId, userId: clientUserId }) => {
+    let resolvedUserId: string | undefined;
+    try {
+      const authUser = await authComponent.getAuthUser(ctx);
+      resolvedUserId =
+        authUser.userId && authUser.userId !== null
+          ? authUser.userId
+          : String(authUser._id);
+    } catch {
+      resolvedUserId = clientUserId?.startsWith("anon-")
+        ? clientUserId
+        : undefined;
+    }
+    if (!resolvedUserId) {
+      throw new Error("Authentication required");
+    }
 
-    const threads = await ctx.runQuery(
-      components.agent.threads.listThreadsByUserId,
-      {
-        userId,
-        paginationOpts: { numItems: 100, cursor: null },
-      },
-    );
-    const ownsThread = threads.page.some(
-      (t: { _id: string }) => t._id === threadId,
-    );
-    if (!ownsThread) throw new Error("Thread not found or access denied");
+    const thread = await ctx.runQuery(components.agent.threads.getThread, {
+      threadId,
+    });
+    if (!thread || thread.userId !== resolvedUserId) {
+      throw new Error("Thread not found or access denied");
+    }
 
     await ctx.runMutation(components.agent.threads.deleteAllForThreadIdAsync, {
       threadId,

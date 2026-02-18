@@ -77,8 +77,21 @@ export const addAdmin = internalMutation({
       .query("adminUsers")
       .withIndex("userId", (q) => q.eq("userId", userId))
       .first();
-    if (existing) return existing._id;
-    return await ctx.db.insert("adminUsers", { userId });
+    const adminDocId = existing
+      ? existing._id
+      : await ctx.db.insert("adminUsers", { userId });
+
+    const profile = await ctx.db
+      .query("userProfiles")
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .first();
+    if (profile) {
+      await ctx.db.patch(profile._id, { role: ROLE_ADMIN });
+    } else {
+      await ctx.db.insert("userProfiles", { userId, role: ROLE_ADMIN });
+    }
+
+    return adminDocId;
   },
 });
 
@@ -93,6 +106,16 @@ export const migrateAdminUsersToRoles = internalMutation({
     const admins = await ctx.db.query("adminUsers").collect();
     let inserted = 0;
     for (const a of admins) {
+      const profile = await ctx.db
+        .query("userProfiles")
+        .withIndex("userId", (q) => q.eq("userId", a.userId))
+        .first();
+      if (profile) {
+        await ctx.db.patch(profile._id, { role: ROLE_ADMIN });
+      } else {
+        await ctx.db.insert("userProfiles", { userId: a.userId, role: ROLE_ADMIN });
+      }
+
       const verified = await ctx.db
         .query("verifiedPhones")
         .withIndex("userId", (q) => q.eq("userId", a.userId))

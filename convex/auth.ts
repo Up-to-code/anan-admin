@@ -92,6 +92,12 @@ export const isUserAdmin = query({
   args: { userId: v.string() },
   returns: v.boolean(),
   handler: async (ctx, { userId }) => {
+    const profile = await ctx.db
+      .query("userProfiles")
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .first();
+    if (profile?.role === ROLE_ADMIN) return true;
+
     const legacyAdmin = await ctx.db
       .query("adminUsers")
       .withIndex("userId", (q) => q.eq("userId", userId))

@@ -38,7 +38,7 @@ async function runSerperImageSearch(
         hl: "ar",
       }),
     });
-    if (!res.ok) return [];
+    if (!res?.ok) return [];
     const data = (await res.json()) as {
       images?: Array<{ title?: string; link?: string; imageUrl?: string }>;
     };
@@ -131,9 +131,10 @@ export async function runSerperSearch(
       }),
     });
 
-    if (!res.ok) {
-      console.log("[anan.search] serper:error", { status: res.status });
-      return { ok: false, error: `serper_http_${res.status}` };
+    if (!res?.ok) {
+      const status = res?.status ?? "unknown";
+      console.log("[anan.search] serper:error", { status });
+      return { ok: false, error: `serper_http_${status}` };
     }
 
     const data = (await res.json()) as {

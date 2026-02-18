@@ -18,6 +18,7 @@ import {
   getAuthUserIdOptional,
 } from "../lib/auth";
 import { userProfileReturnValidator } from "../domain/user";
+import { ROLE_USER } from "../roles";
 
 /** List all user profiles. Admin only. */
 export const list = query({
@@ -73,22 +74,29 @@ export const ensureWhatsAppUser = mutation({
         await ctx.db.patch(existing._id, {
           name: displayName,
           phone: existing.phone ?? userId,
+          role: existing.role ?? ROLE_USER,
           verified: true,
           source: "whatsapp",
         });
       } else if (!existing.verified) {
         await ctx.db.patch(existing._id, {
           phone: existing.phone ?? userId,
+          role: existing.role ?? ROLE_USER,
           verified: true,
           source: "whatsapp",
         });
       } else if (!existing.phone) {
-        await ctx.db.patch(existing._id, { phone: userId, source: "whatsapp" });
+        await ctx.db.patch(existing._id, {
+          phone: userId,
+          role: existing.role ?? ROLE_USER,
+          source: "whatsapp",
+        });
       }
       return existing._id;
     }
     return await ctx.db.insert("userProfiles", {
       userId,
+      role: ROLE_USER,
       name: displayName,
       phone: userId,
       verified: true,
@@ -99,6 +107,7 @@ export const ensureWhatsAppUser = mutation({
 
 const upsertArgs = {
   userId: v.string(),
+  role: v.optional(v.union(v.literal("user"), v.literal("admin"))),
   name: v.optional(v.string()),
   salary: v.optional(v.number()),
   employment: v.optional(v.string()),
@@ -137,7 +146,11 @@ export const upsertInternal = internalMutation({
       }
       return existing._id;
     }
-    return await ctx.db.insert("userProfiles", { userId, ...patchData });
+    return await ctx.db.insert("userProfiles", {
+      userId,
+      role: ROLE_USER,
+      ...patchData,
+    });
   },
 });
 
@@ -164,7 +177,11 @@ export const upsert = mutation({
       }
       return existing._id;
     }
-    return await ctx.db.insert("userProfiles", { userId, ...patchData });
+    return await ctx.db.insert("userProfiles", {
+      userId,
+      role: ROLE_USER,
+      ...patchData,
+    });
   },
 });
 

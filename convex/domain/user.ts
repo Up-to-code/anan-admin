@@ -3,6 +3,7 @@
  */
 import { v } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
+import { roleValidator } from "../roles";
 
 // ============================================================================
 // Types
@@ -16,6 +17,7 @@ export type UserProfile = Doc<"userProfiles">;
 
 export interface UserProfileCreateInput {
   userId: string;
+  role?: UserRole;
   name?: string;
   phone?: string;
   email?: string;
@@ -35,6 +37,7 @@ export interface UserProfileCreateInput {
 }
 
 export interface UserProfileUpdateInput {
+  role?: UserRole;
   name?: string;
   phone?: string;
   email?: string;
@@ -69,6 +72,7 @@ export const userRoleValidator = v.union(
 
 export const userProfileCreateArgsValidator = {
   userId: v.string(),
+  role: v.optional(roleValidator),
   name: v.optional(v.string()),
   phone: v.optional(v.string()),
   email: v.optional(v.string()),
@@ -88,6 +92,7 @@ export const userProfileCreateArgsValidator = {
 };
 
 export const userProfileUpdateArgsValidator = {
+  role: v.optional(roleValidator),
   name: v.optional(v.string()),
   phone: v.optional(v.string()),
   email: v.optional(v.string()),
@@ -113,6 +118,7 @@ export const userProfileReturnValidator = v.object({
   _id: v.id("userProfiles"),
   _creationTime: v.number(),
   userId: v.string(),
+  role: v.optional(roleValidator),
   name: v.optional(v.string()),
   phone: v.optional(v.string()),
   email: v.optional(v.string()),

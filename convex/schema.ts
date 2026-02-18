@@ -162,6 +162,7 @@ export default defineSchema({
   /** User profiles with all fields the agent depends on */
   userProfiles: defineTable({
     userId: v.string(),
+    role: v.optional(roleValidator),
     name: v.optional(v.string()),
     phone: v.optional(v.string()),
     email: v.optional(v.string()),
@@ -187,6 +188,7 @@ export default defineSchema({
     chatLimit: v.optional(v.number()),
   })
     .index("userId", ["userId"])
+    .index("role", ["role"])
     .index("source", ["source"]),
 
   /** Orders / pipeline (property viewings, loan applications, etc.) */

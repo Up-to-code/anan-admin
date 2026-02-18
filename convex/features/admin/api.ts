@@ -11,6 +11,7 @@ export {
   conversationsListThreads,
   conversationsListUsersWithThreads,
   conversationsGetThreadMessages,
+  conversationsGetThreadTraces,
 } from "../../admin/setup";
 
 export {

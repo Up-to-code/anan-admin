@@ -159,7 +159,6 @@ function formatAction(action: string): string {
 export default function TeamPage() {
   const members = useQuery(api.features.admin.api.listTeamMembers, {});
   const myStats = useQuery(api.features.admin.api.getMyAdminStats, {});
-  const setRoleByPhone = useMutation(api.features.admin.api.setUserRole);
   const setRoleByUserId = useMutation(api.features.admin.api.setUserRoleByUserId);
   const [roleFilter, setRoleFilter] = React.useState<string>("all");
   const [statsOpen, setStatsOpen] = React.useState(true);
@@ -167,13 +166,9 @@ export default function TeamPage() {
 
   const handleRoleChange = React.useCallback(
     async (member: TeamMember, role: "user" | "admin") => {
-      if (member.phone) {
-        await setRoleByPhone({ phoneNumber: member.phone, role });
-      } else {
-        await setRoleByUserId({ userId: member.userId, role });
-      }
+      await setRoleByUserId({ userId: member.userId, role });
     },
-    [setRoleByPhone, setRoleByUserId],
+    [setRoleByUserId],
   );
 
   const filteredMembers = React.useMemo(() => {

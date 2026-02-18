@@ -11,7 +11,7 @@ import { components } from "../_generated/api";
 import { requireAdmin, getUserRoleByPhone } from "../lib/auth";
 import { authComponent } from "../auth";
 import { normalizePhone } from "../lib/phone";
-import { roleValidator } from "../roles";
+import { ROLE_ADMIN, ROLE_USER, roleValidator } from "../roles";
 
 /** Synthetic profile shape for users who exist in Better Auth but not in userProfiles */
 type SyntheticProfile = {
@@ -115,6 +115,12 @@ async function enrichUsersWithPhoneAndRole(
 > {
   const userIds = users.map((u) => u.userId);
 
+  const profileRoleByUserId = new Map<string, "user" | "admin">(
+    (await ctx.db.query("userProfiles").collect())
+      .filter((p) => userIds.includes(p.userId) && p.role !== undefined)
+      .map((p) => [p.userId, p.role as "user" | "admin"]),
+  );
+
   const allVerifiedPhones = await ctx.db.query("verifiedPhones").collect();
   const verifiedByUserId = new Map<string, string>();
   for (const rec of allVerifiedPhones) {
@@ -144,9 +150,14 @@ async function enrichUsersWithPhoneAndRole(
   );
 
   return users.map((u) => {
+    const profileRole = profileRoleByUserId.get(u.userId);
+    if (profileRole === ROLE_ADMIN) {
+      const phoneNumber = verifiedByUserId.get(u.userId) ?? u.phone ?? null;
+      return { userId: u.userId, phoneNumber, role: ROLE_ADMIN };
+    }
     if (adminUserIds.has(u.userId)) {
       const phoneNumber = verifiedByUserId.get(u.userId) ?? u.phone ?? null;
-      return { userId: u.userId, phoneNumber, role: "admin" as const };
+      return { userId: u.userId, phoneNumber, role: ROLE_ADMIN };
     }
     const phoneNumber = verifiedByUserId.get(u.userId) ?? null;
     const normalizedPhone = phoneNumber
@@ -281,7 +292,8 @@ export const usersGetByUserId = query({
         .withIndex("userId", (q) => q.eq("userId", userId))
         .first();
       const role =
-        roleFromPhone === "admin" || legacyAdmin ? "admin" : roleFromPhone;
+        profile.role ??
+        (roleFromPhone === ROLE_ADMIN || legacyAdmin ? ROLE_ADMIN : roleFromPhone);
       return {
         ...profile,
         phoneNumber,
@@ -299,10 +311,10 @@ export const usersGetByUserId = query({
     return {
       userId,
       name: (baUser as { name?: string }).name ?? null,
-      phone: (baUser as { phoneNumber?: string }).phoneNumber ?? null,
-      phoneNumber: (baUser as { phoneNumber?: string }).phoneNumber ?? null,
+      phone: phoneNumber ?? (baUser as { phoneNumber?: string }).phoneNumber ?? null,
+      phoneNumber: phoneNumber ?? (baUser as { phoneNumber?: string }).phoneNumber ?? null,
       email: (baUser as { email?: string }).email ?? null,
-      role: legacyAdmin ? ("admin" as const) : ("user" as const),
+      role: legacyAdmin || roleFromPhone === ROLE_ADMIN ? ROLE_ADMIN : ROLE_USER,
       verified: (baUser as { emailVerified?: boolean }).emailVerified ?? false,
       _creationTime:
         (baUser as { createdAt?: number }).createdAt ?? Date.now(),
@@ -343,6 +355,25 @@ export const listTeamMembers = query({
 
     const allProfiles = await ctx.db.query("userProfiles").collect();
     const profileByUserId = new Map(allProfiles.map((p) => [p.userId, p]));
+
+    for (const profile of allProfiles) {
+      if (profile.role !== ROLE_ADMIN || seen.has(profile.userId)) continue;
+      seen.add(profile.userId);
+      const verified = allVerified.find((v) => v.userId === profile.userId);
+      const phone = verified?.phoneNumber
+        ? normalizePhone(verified.phoneNumber)
+        : profile.phone
+          ? normalizePhone(profile.phone)
+          : null;
+      members.push({
+        userId: profile.userId,
+        name: profile.name ?? null,
+        phone,
+        email: profile.email ?? null,
+        role: ROLE_ADMIN,
+        canEditRole: true,
+      });
+    }
 
     for (const phone of adminPhones) {
       const userId = userIdByPhone.get(phone);
@@ -413,11 +444,45 @@ export const setUserRole = mutation({
       .query("userRoles")
       .withIndex("phoneNumber", (q) => q.eq("phoneNumber", normalized))
       .first();
+    let roleDocId: any;
     if (existing) {
       await ctx.db.patch(existing._id, { role });
-      return existing._id;
+      roleDocId = existing._id;
+    } else {
+      roleDocId = await ctx.db.insert("userRoles", { phoneNumber: normalized, role });
     }
-    return await ctx.db.insert("userRoles", { phoneNumber: normalized, role });
+
+    // Keep userProfiles/adminUsers in sync for any users linked to this phone.
+    const verifiedRows = await ctx.db
+      .query("verifiedPhones")
+      .withIndex("phoneNumber", (q) => q.eq("phoneNumber", normalized))
+      .collect();
+
+    for (const row of verifiedRows) {
+      if (!row.userId) continue;
+      const profile = await ctx.db
+        .query("userProfiles")
+        .withIndex("userId", (q) => q.eq("userId", row.userId!))
+        .first();
+      if (profile) {
+        await ctx.db.patch(profile._id, { role });
+      } else {
+        await ctx.db.insert("userProfiles", { userId: row.userId, role });
+      }
+
+      const adminRow = await ctx.db
+        .query("adminUsers")
+        .withIndex("userId", (q) => q.eq("userId", row.userId!))
+        .first();
+      if (role === ROLE_ADMIN && !adminRow) {
+        await ctx.db.insert("adminUsers", { userId: row.userId });
+      }
+      if (role === ROLE_USER && adminRow) {
+        await ctx.db.delete(adminRow._id);
+      }
+    }
+
+    return roleDocId;
   },
 });
 
@@ -428,11 +493,40 @@ export const setUserRoleByUserId = mutation({
   },
   handler: async (ctx, { userId, role }) => {
     await requireAdmin(ctx);
+
+    const profile = await ctx.db
+      .query("userProfiles")
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .first();
+    if (profile) {
+      await ctx.db.patch(profile._id, { role });
+    } else {
+      await ctx.db.insert("userProfiles", { userId, role });
+    }
+
+    // If the user has a verified phone, sync role in the phone-based role table too.
+    const verified = await ctx.db
+      .query("verifiedPhones")
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .first();
+    if (verified?.phoneNumber) {
+      const normalized = normalizePhone(verified.phoneNumber);
+      const roleRow = await ctx.db
+        .query("userRoles")
+        .withIndex("phoneNumber", (q) => q.eq("phoneNumber", normalized))
+        .first();
+      if (roleRow) {
+        await ctx.db.patch(roleRow._id, { role });
+      } else {
+        await ctx.db.insert("userRoles", { phoneNumber: normalized, role });
+      }
+    }
+
     const existing = await ctx.db
       .query("adminUsers")
       .withIndex("userId", (q) => q.eq("userId", userId))
       .first();
-    if (role === "admin") {
+    if (role === ROLE_ADMIN) {
       if (existing) return existing._id;
       return await ctx.db.insert("adminUsers", { userId });
     }
@@ -545,7 +639,10 @@ export const getUserFullData = query({
         .withIndex("userId", (q) => q.eq("userId", userId))
         .first();
       const phoneNumber = (baUser as { phoneNumber?: string }).phoneNumber ?? null;
-      const role = legacyAdmin ? "admin" : "user";
+      const roleFromPhone = phoneNumber
+        ? await getUserRoleByPhone(ctx, phoneNumber)
+        : ROLE_USER;
+      const role = legacyAdmin || roleFromPhone === ROLE_ADMIN ? ROLE_ADMIN : ROLE_USER;
       const minimalProfile = {
         userId,
         name: (baUser as { name?: string }).name ?? null,
@@ -584,9 +681,14 @@ export const getUserFullData = query({
       .withIndex("userId", (q) => q.eq("userId", userId))
       .first();
     const phoneNumber = verified?.phoneNumber ?? null;
-    const role = phoneNumber
+    const roleFromPhone = phoneNumber
       ? await getUserRoleByPhone(ctx, phoneNumber)
-      : "user";
+      : ROLE_USER;
+    const legacyAdmin = await ctx.db
+      .query("adminUsers")
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .first();
+    const role = profile.role ?? (legacyAdmin || roleFromPhone === ROLE_ADMIN ? ROLE_ADMIN : ROLE_USER);
 
     const orders = await ctx.db
       .query("orders")

@@ -11,6 +11,7 @@ import {
   requireAdmin,
   isAdmin as checkIsAdmin,
 } from "../lib/auth";
+import { ROLE_ADMIN } from "../roles";
 
 export const addFirstAdmin = mutation({
   args: {},
@@ -23,6 +24,15 @@ export const addFirstAdmin = mutation({
       );
     }
     await ctx.db.insert("adminUsers", { userId });
+    const profile = await ctx.db
+      .query("userProfiles")
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .first();
+    if (profile) {
+      await ctx.db.patch(profile._id, { role: ROLE_ADMIN });
+    } else {
+      await ctx.db.insert("userProfiles", { userId, role: ROLE_ADMIN });
+    }
     return { ok: true };
   },
 });
@@ -120,5 +130,22 @@ export const conversationsGetThreadMessages = query({
       paginationOpts: args.paginationOpts,
       allowAdmin: true,
     });
+  },
+});
+
+export const conversationsGetThreadTraces = query({
+  args: {
+    threadId: v.string(),
+    limit: v.optional(v.number()),
+  },
+  returns: v.any(),
+  handler: async (ctx, args): Promise<unknown> => {
+    await requireAdmin(ctx);
+    const limit = Math.min(Math.max(args.limit ?? 20, 1), 100);
+    return ctx.db
+      .query("agentTraces")
+      .withIndex("threadId", (q) => q.eq("threadId", args.threadId))
+      .order("desc")
+      .take(limit);
   },
 });
