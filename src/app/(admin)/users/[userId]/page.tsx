@@ -51,6 +51,11 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageHeader, StatCard } from "@/components/admin/ui";
+import {
+  TimeStatusFilter,
+  type TimeFilterValue,
+} from "@/components/admin/TimeStatusFilter";
+import { AreaChart, COLORS } from "@/components/ui/charts";
 
 const URL_REGEX = /(https?:\/\/[^\s<>"'`)\]]+)/g;
 const MARKDOWN_IMAGE_REGEX = /!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g;
@@ -501,6 +506,12 @@ export default function UserDetailPage() {
   const [summaryLoading, setSummaryLoading] = React.useState(false);
   const [activeThreadId, setActiveThreadId] = React.useState<string | null>(null);
   const [conversationFullMode, setConversationFullMode] = React.useState(false);
+  const [userTimeFilter, setUserTimeFilter] = React.useState<TimeFilterValue>({
+    preset: "7d",
+    fromMs: Date.now() - 7 * 24 * 60 * 60 * 1000,
+    toMs: Date.now(),
+  });
+  const [activityType, setActivityType] = React.useState<"all" | "message_sent" | "search" | "order_created">("all");
 
   const user = useQuery(api.features.admin.api.getUser, { userId });
   const userFullData = useQuery(api.features.admin.api.getUserFullData, { userId });
@@ -513,6 +524,15 @@ export default function UserDetailPage() {
   const generateSummary = useMutation(api.features.admin.api.generateUserSummary);
   const aiCosts = useQuery(api.features.admin.api.getTotalAICostsByUserId, { userId });
   const toolCosts = useQuery(api.features.admin.api.getToolCostsByUserId, { userId });
+  const activitySeries = useQuery(
+    api.features.admin.api.userActivitySeries,
+    {
+      userId,
+      fromMs: userTimeFilter.fromMs,
+      toMs: userTimeFilter.toMs,
+      activityType,
+    },
+  );
 
   const threadMessages = useQuery(
     api.features.admin.api.conversationsGetThreadMessages,
@@ -548,6 +568,19 @@ export default function UserDetailPage() {
     };
   }, [conversationFullMode]);
 
+  const counts = (userFullData?.counts || {}) as Record<string, number>;
+  const threads = userThreads?.page || [];
+  const messages = threadMessages?.page || [];
+  const activityChartData = activitySeries
+    ? activitySeries.activitySeries.map((_, i) => ({
+      name: `${i + 1}`,
+      activity: activitySeries.activitySeries[i] ?? 0,
+      searches: activitySeries.searchSeries[i] ?? 0,
+      notifications: activitySeries.notificationSeries[i] ?? 0,
+      orders: activitySeries.orderSeries[i] ?? 0,
+    }))
+    : [];
+
   if (user === undefined) return <LoadingSkeleton />;
   if (!user) {
     return (
@@ -560,10 +593,6 @@ export default function UserDetailPage() {
       </Card>
     );
   }
-
-  const counts = (userFullData?.counts || {}) as Record<string, number>;
-  const threads = userThreads?.page || [];
-  const messages = threadMessages?.page || [];
 
   async function onRoleChange(role: "user" | "admin") {
     try { await setRoleByUserId({ userId, role }); toast.success(ar.roleUpdated); }
@@ -662,6 +691,26 @@ export default function UserDetailPage() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4 mt-6">
+          <TimeStatusFilter
+            value={userTimeFilter}
+            onTimeChange={setUserTimeFilter}
+            extraFilters={
+              <div className="w-full md:w-[220px]">
+                <label className="mb-1 block text-xs text-muted-foreground">نوع النشاط</label>
+                <select
+                  className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                  value={activityType}
+                  onChange={(e) => setActivityType(e.target.value as any)}
+                >
+                  <option value="all">الكل</option>
+                  <option value="message_sent">رسائل</option>
+                  <option value="search">بحث</option>
+                  <option value="order_created">طلبات</option>
+                </select>
+              </div>
+            }
+          />
+
           <div className="grid md:grid-cols-2 gap-4">
             <Card>
               <CardHeader><CardTitle className="text-base">{ar.basicInfo}</CardTitle></CardHeader>
@@ -686,6 +735,21 @@ export default function UserDetailPage() {
               </CardContent>
             </Card>
           </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">مؤشرات نشاط المستخدم</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <AreaChart
+                data={activityChartData}
+                index="name"
+                categories={["activity", "searches", "notifications", "orders"]}
+                colors={[COLORS.blue, COLORS.emerald, COLORS.violet, COLORS.amber]}
+                height={280}
+              />
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader><CardTitle className="text-base">تكلفة الذكاء الاصطناعي</CardTitle></CardHeader>

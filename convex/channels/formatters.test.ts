@@ -29,7 +29,8 @@ describe("formatForChannel", () => {
 
     expect(formatted.imageUrl).toBe("https://img.example.com/fallback.webp");
     expect(formatted.imageUrls).toBeUndefined();
-    expect(formatted.text).toBe("No URL in text");
+    expect(formatted.text).toContain("No URL in text");
+    expect(formatted.text).toContain("What would you like me to do next?");
   });
 
   it("returns top 5 unique imageUrls for whatsapp", () => {

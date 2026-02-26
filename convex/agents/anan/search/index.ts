@@ -129,7 +129,7 @@ export async function runSearchAgent(
   const searchTerms = buildSearchTerms(query, refreshToken, offset);
   const deadlineMs = startTime + SEARCH_CIRCUIT_BREAKER_MS;
 
-  let portalFindings: PropertyFinding[] = [];
+  const portalFindings: PropertyFinding[] = [];
   const portalSources: SerperResult[] = [];
   const portalState: StagehandState = { disabled: false };
 

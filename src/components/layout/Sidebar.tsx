@@ -187,7 +187,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   );
   const summary = useQuery(
     api.features.admin.api.pipelineSummary,
-    isAdmin === true ? undefined : "skip",
+    isAdmin === true ? {} : "skip",
   );
 
   const [expandedGroups, setExpandedGroups] = React.useState<Record<string, boolean>>(() => {

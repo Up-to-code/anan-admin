@@ -17,11 +17,14 @@ import {
   Activity,
   Search,
   MessageCircle,
-  MousePointerClick,
 } from "lucide-react";
 import { AreaChart, COLORS } from "@/components/ui/charts";
 import { cn } from "@/lib/utils";
 import { PageSkeleton, StatCard, PageHeader } from "@/components/admin/ui";
+import {
+  TimeStatusFilter,
+  type TimeFilterValue,
+} from "@/components/admin/TimeStatusFilter";
 
 // --- Funnel Component ---
 function FunnelStage({
@@ -64,19 +67,49 @@ function formatNumber(n: number | undefined): string {
 }
 
 export default function DashboardPage() {
-  const [timeRange, setTimeRange] = React.useState("week");
+  const [timeRange, setTimeRange] = React.useState<"day" | "week" | "month" | "year">("week");
+  const [timeFilter, setTimeFilter] = React.useState<TimeFilterValue>({
+    preset: "7d",
+    fromMs: Date.now() - 7 * 24 * 60 * 60 * 1000,
+    toMs: Date.now(),
+  });
   const isAdmin = useQuery(api.features.admin.api.isAdmin);
 
   // Data Hooks
-  const stats = useQuery(api.features.admin.api.dashboardStats, isAdmin === true ? undefined : "skip");
-  const summary = useQuery(api.features.admin.api.pipelineSummary, isAdmin === true ? undefined : "skip");
+  const stats = useQuery(
+    api.features.admin.api.dashboardStats,
+    isAdmin === true
+      ? { fromMs: timeFilter.fromMs, toMs: timeFilter.toMs }
+      : "skip",
+  );
+  const summary = useQuery(
+    api.features.admin.api.pipelineSummary,
+    isAdmin === true
+      ? { fromMs: timeFilter.fromMs, toMs: timeFilter.toMs }
+      : "skip",
+  );
   const chartData = useQuery(
     api.features.admin.api.dashboardChartData,
-    isAdmin === true ? { range: timeRange as "day" | "week" | "month" | "year" } : "skip"
+    isAdmin === true
+      ? {
+          range: timeRange as "day" | "week" | "month" | "year",
+          fromMs: timeFilter.fromMs,
+          toMs: timeFilter.toMs,
+        }
+      : "skip",
   );
-  const feed = useQuery(api.features.admin.api.salesActivityFeed, isAdmin === true ? { limit: 8 } : "skip");
-  const searchAnalytics = useQuery(api.features.admin.api.searchAnalyticsStats, isAdmin === true ? undefined : "skip");
-  const topAreas = useQuery(api.features.admin.api.topSearchedAreas, isAdmin === true ? undefined : "skip");
+  const feed = useQuery(
+    api.features.admin.api.salesActivityFeed,
+    isAdmin === true
+      ? { limit: 8, fromMs: timeFilter.fromMs, toMs: timeFilter.toMs }
+      : "skip",
+  );
+  const topAreas = useQuery(
+    api.features.admin.api.topSearchedAreas,
+    isAdmin === true
+      ? { fromMs: timeFilter.fromMs, toMs: timeFilter.toMs }
+      : "skip",
+  );
 
   const loading = stats === undefined;
 
@@ -105,20 +138,40 @@ export default function DashboardPage() {
       <PageHeader
         title="نظرة عامة"
         description="ملخص أداء المنصة ومسار المبيعات."
-        action={
-          <div className="flex items-center gap-2 bg-muted/50 p-1 rounded-lg">
-            {["day", "week", "month", "year"].map((t) => (
-              <button
-                key={t}
-                onClick={() => setTimeRange(t)}
-                className={cn(
-                  "px-3 py-1.5 text-sm font-medium rounded-md transition-all",
-                  timeRange === t ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-background/50"
-                )}
-              >
-                {t === "day" ? "يوم" : t === "week" ? "أسبوع" : t === "month" ? "شهر" : "سنة"}
-              </button>
-            ))}
+        action={null}
+      />
+
+      <TimeStatusFilter
+        value={timeFilter}
+        onTimeChange={(next) => {
+          setTimeFilter(next);
+          if (next.preset === "24h") setTimeRange("day");
+          if (next.preset === "7d") setTimeRange("week");
+          if (next.preset === "30d" || next.preset === "90d") setTimeRange("month");
+          if (next.preset === "1y") setTimeRange("year");
+          if (next.preset === "custom") setTimeRange("week");
+        }}
+        extraFilters={
+          <div className="w-full md:w-[220px]">
+            <label className="mb-1 block text-xs text-muted-foreground">
+              كثافة الرسم
+            </label>
+            <div className="flex items-center gap-2 bg-muted/50 p-1 rounded-lg">
+              {["day", "week", "month", "year"].map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTimeRange(t as "day" | "week" | "month" | "year")}
+                  className={cn(
+                    "px-3 py-1.5 text-sm font-medium rounded-md transition-all",
+                    timeRange === t
+                      ? "bg-background shadow-sm text-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-background/50",
+                  )}
+                >
+                  {t === "day" ? "يوم" : t === "week" ? "أسبوع" : t === "month" ? "شهر" : "سنة"}
+                </button>
+              ))}
+            </div>
           </div>
         }
       />
@@ -200,7 +253,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid md:grid-cols-2 gap-6">
         <Card className="shadow-sm border-border/50">
           <CardHeader>
             <CardTitle className="text-base">آخر النشاطات</CardTitle>
@@ -254,34 +307,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="shadow-sm border-border/50">
-          <CardHeader>
-            <CardTitle className="text-base">اهتمامات المستخدمين</CardTitle>
-            <CardDescription>أبرز كلمات البحث والاستعلام.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {searchAnalytics?.topQueries?.slice(0, 10).map((q: any, i: number) => (
-                <Badge key={i} variant="secondary" className="px-2 py-1 text-xs font-normal bg-muted/50 hover:bg-muted text-foreground">
-                  {q.query}
-                  <span className="ml-1.5 opacity-50 border-l border-foreground/20 pl-1.5">{q.count}</span>
-                </Badge>
-              ))}
-            </div>
-            <Separator className="my-6" />
-            <div className="space-y-2">
-              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">روابط سريعة</h4>
-              <div className="grid grid-cols-2 gap-2">
-                <Button variant="outline" size="sm" className="justify-start font-normal" asChild>
-                  <Link href="/orders"><MousePointerClick className="mr-2 h-4 w-4" /> إدارة الطلبات</Link>
-                </Button>
-                <Button variant="outline" size="sm" className="justify-start font-normal" asChild>
-                  <Link href="/users"><Users className="mr-2 h-4 w-4" /> العملاء</Link>
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );

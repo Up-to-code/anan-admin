@@ -38,11 +38,15 @@ export function Composer({
   onSend,
   onSlashCommand,
   onOpenPendingActions,
+  goalHint,
+  statusLabel,
 }: {
   isLoading: boolean;
   onSend: (value: string) => void;
   onSlashCommand: (command: SlashCommand, text: string) => Promise<string>;
   onOpenPendingActions?: () => void;
+  goalHint?: string;
+  statusLabel?: string;
 }) {
   const [input, setInput] = useState("");
   const [isRunningCommand, setIsRunningCommand] = useState(false);
@@ -169,6 +173,9 @@ export function Composer({
   return (
     <TooltipProvider delayDuration={200}>
       <form className="w-full" dir="rtl" onSubmit={(e) => void submit(e)}>
+        {goalHint ? (
+          <div className="mb-2 px-1 text-xs text-muted-foreground">{goalHint}</div>
+        ) : null}
         <div className="relative flex items-center gap-2 rounded-2xl border border-input bg-background px-3 py-2 shadow-sm transition-[box-shadow,border-color] focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20">
         <Tooltip>
           <TooltipTrigger asChild>
@@ -243,7 +250,10 @@ export function Composer({
             <TooltipContent side="top">{ar.agentSend}</TooltipContent>
           </Tooltip>
         </div>
-      </div>
+        </div>
+        <p aria-live="polite" className="sr-only">
+          {statusLabel ?? (isLoading ? "جاري تحضير الرد" : "جاهز للإرسال")}
+        </p>
     </form>
     </TooltipProvider>
   );

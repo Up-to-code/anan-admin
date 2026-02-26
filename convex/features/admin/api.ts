@@ -48,6 +48,7 @@ export {
   notificationsUnreadCount,
   notificationAcknowledge,
   notificationResolve,
+  userActivitySeries,
   reviewsList,
   favoritesList,
   getUserFullData,

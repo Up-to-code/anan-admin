@@ -4,7 +4,6 @@
 
 import { mutation, query } from "../_generated/server";
 import { v } from "convex/values";
-import { api } from "../_generated/api";
 import { requireAdmin } from "../lib/auth";
 
 const partnerStatusValidator = v.union(
@@ -286,11 +285,22 @@ export const propertiesList = query({
   returns: v.any(),
   handler: async (ctx, args): Promise<unknown> => {
     await requireAdmin(ctx);
-    return ctx.runQuery(api.services.properties.list, {
-      limit: args.limit ?? 50,
-      bankId: args.bankId,
-      partnerId: args.partnerId,
-    });
+    const limit = args.limit ?? 50;
+    if (args.bankId) {
+      return ctx.db
+        .query("properties")
+        .withIndex("bankId", (q) => q.eq("bankId", args.bankId!))
+        .order("desc")
+        .take(limit);
+    }
+    if (args.partnerId) {
+      return ctx.db
+        .query("properties")
+        .withIndex("partnerId", (q) => q.eq("partnerId", args.partnerId!))
+        .order("desc")
+        .take(limit);
+    }
+    return ctx.db.query("properties").order("desc").take(limit);
   },
 });
 

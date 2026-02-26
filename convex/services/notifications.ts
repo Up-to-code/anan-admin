@@ -4,6 +4,7 @@
 
 import { internalMutation } from "../_generated/server";
 import { v } from "convex/values";
+import { buildNotificationTemplate } from "./notificationManifest";
 
 const priorityValidator = v.union(
   v.literal("low"),
@@ -65,5 +66,49 @@ export const createSalesNotification = internalMutation({
       status: args.status ?? "new",
       metadata: args.metadata,
     });
+  },
+});
+
+export const createOrderMentionNotifications = internalMutation({
+  args: {
+    userIds: v.array(v.string()),
+    orderId: v.id("orders"),
+    actorName: v.optional(v.string()),
+    mentionNote: v.optional(v.string()),
+  },
+  handler: async (ctx, { userIds, orderId, actorName, mentionNote }) => {
+    const order = await ctx.db.get(orderId);
+    if (!order) return { sent: 0 };
+    const uniqueUserIds = Array.from(new Set(userIds.filter(Boolean)));
+    let sent = 0;
+    for (const userId of uniqueUserIds) {
+      const payload = buildNotificationTemplate({
+        event: "order_mentioned",
+        order,
+        actorName,
+        mentionNote,
+      });
+      await ctx.db.insert("notifications", {
+        userId,
+        title: payload.title,
+        body: payload.body,
+        read: false,
+        type: "order_mention",
+        linkId: String(order._id),
+        audience: payload.audience,
+        entityType: "order",
+        entityId: String(order._id),
+        priority: payload.priority,
+        actionRequired: payload.actionRequired,
+        status: "new",
+        metadata: {
+          ...(payload.metadata ?? {}),
+          orderId: String(order._id),
+          mentionedBy: actorName,
+        },
+      });
+      sent += 1;
+    }
+    return { sent };
   },
 });

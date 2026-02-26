@@ -24,6 +24,7 @@ function isAssistantPayload(value: unknown): value is AssistantPayload {
     "recommendation_bank",
     "recommendation_developer",
     "action_state",
+    "engagement",
   ].includes(item.type);
 }
 

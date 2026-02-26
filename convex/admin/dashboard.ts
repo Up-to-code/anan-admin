@@ -122,13 +122,18 @@ export const getMyAdminStats = query({
 });
 
 export const dashboardStats = query({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    fromMs: v.optional(v.number()),
+    toMs: v.optional(v.number()),
+  },
+  handler: async (ctx, { fromMs, toMs }) => {
     await requireAdmin(ctx);
     const now = Date.now();
     const h24 = now - 24 * 60 * 60 * 1000;
     const d30 = now - 30 * 24 * 60 * 60 * 1000;
     const y1 = now - 365 * 24 * 60 * 60 * 1000;
+    const startRange = fromMs ?? 0;
+    const endRange = toMs ?? now;
 
     const [
       allUsers,
@@ -165,7 +170,10 @@ export const dashboardStats = query({
     const ordersByStatus: Record<string, number> = {};
     let unassignedOrders = 0;
     let staleOrders = 0;
-    for (const o of allOrders) {
+    const rangedOrders = allOrders.filter(
+      (o) => o._creationTime >= startRange && o._creationTime <= endRange,
+    );
+    for (const o of rangedOrders) {
       ordersByStatus[o.status] = (ordersByStatus[o.status] || 0) + 1;
       if (!o.assignedTo) unassignedOrders += 1;
       const isClosed = o.status === "closed_won" || o.status === "closed_lost";
@@ -202,13 +210,19 @@ export const dashboardStats = query({
 });
 
 export const salesActivityFeed = query({
-  args: { limit: v.optional(v.number()) },
-  handler: async (ctx, { limit = 20 }) => {
+  args: {
+    limit: v.optional(v.number()),
+    fromMs: v.optional(v.number()),
+    toMs: v.optional(v.number()),
+  },
+  handler: async (ctx, { limit = 20, fromMs, toMs }) => {
     await requireAdmin(ctx);
     const [activities, orders] = await Promise.all([
       ctx.db.query("userActivity").order("desc").take(limit),
       ctx.db.query("orders").order("desc").take(limit),
     ]);
+    const startRange = fromMs ?? 0;
+    const endRange = toMs ?? Date.now();
     const feed = [
       ...activities.map((a) => ({
         kind: "activity" as const,
@@ -225,6 +239,7 @@ export const salesActivityFeed = query({
         details: { orderId: o._id, type: o.type, status: o.status },
       })),
     ]
+      .filter((row) => row.createdAt >= startRange && row.createdAt <= endRange)
       .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, limit);
     return feed;
@@ -239,15 +254,30 @@ export const dashboardChartData = query({
       v.literal("month"),
       v.literal("year"),
     ),
+    fromMs: v.optional(v.number()),
+    toMs: v.optional(v.number()),
   },
-  handler: async (ctx, { range }) => {
+  handler: async (ctx, { range, fromMs, toMs }) => {
     await requireAdmin(ctx);
     const now = Date.now();
     let startTime: number;
     let bucketMs: number;
     let bucketCount: number;
 
-    switch (range) {
+    if (fromMs !== undefined || toMs !== undefined) {
+      startTime = fromMs ?? now - 7 * 24 * 60 * 60 * 1000;
+      const endTime = toMs ?? now;
+      const duration = Math.max(60 * 60 * 1000, endTime - startTime);
+      if (duration <= 48 * 60 * 60 * 1000) {
+        bucketMs = 60 * 60 * 1000;
+      } else if (duration <= 90 * 24 * 60 * 60 * 1000) {
+        bucketMs = 24 * 60 * 60 * 1000;
+      } else {
+        bucketMs = 7 * 24 * 60 * 60 * 1000;
+      }
+      bucketCount = Math.max(1, Math.min(180, Math.ceil(duration / bucketMs)));
+    } else {
+      switch (range) {
       case "day":
         startTime = now - 24 * 60 * 60 * 1000;
         bucketMs = 60 * 60 * 1000;
@@ -268,7 +298,9 @@ export const dashboardChartData = query({
         bucketMs = 30 * 24 * 60 * 60 * 1000;
         bucketCount = 12;
         break;
+      }
     }
+    const endTime = toMs ?? now;
 
     const [allActivity, allUsers, allOrders] = await Promise.all([
       ctx.db.query("userActivity").collect(),
@@ -277,10 +309,14 @@ export const dashboardChartData = query({
     ]);
 
     const recentActivity = allActivity.filter(
-      (a) => a._creationTime >= startTime,
+      (a) => a._creationTime >= startTime && a._creationTime <= endTime,
     );
-    const recentUsers = allUsers.filter((u) => u._creationTime >= startTime);
-    const recentOrders = allOrders.filter((o) => o._creationTime >= startTime);
+    const recentUsers = allUsers.filter(
+      (u) => u._creationTime >= startTime && u._creationTime <= endTime,
+    );
+    const recentOrders = allOrders.filter(
+      (o) => o._creationTime >= startTime && o._creationTime <= endTime,
+    );
 
     const messageSeries: number[] = new Array(bucketCount).fill(0);
     const newUserSeries: number[] = new Array(bucketCount).fill(0);
@@ -321,12 +357,20 @@ export const dashboardChartData = query({
 });
 
 export const topSearchedAreas = query({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    fromMs: v.optional(v.number()),
+    toMs: v.optional(v.number()),
+  },
+  handler: async (ctx, { fromMs, toMs }) => {
     await requireAdmin(ctx);
     const logs = await ctx.db.query("searchLogs").collect();
+    const filteredLogs = logs.filter((log) => {
+      if (fromMs !== undefined && log._creationTime < fromMs) return false;
+      if (toMs !== undefined && log._creationTime > toMs) return false;
+      return true;
+    });
     const counts: Record<string, number> = {};
-    for (const log of logs) {
+    for (const log of filteredLogs) {
       if (log.location) {
         counts[log.location] = (counts[log.location] || 0) + 1;
       }

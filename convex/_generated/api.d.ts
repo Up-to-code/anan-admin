@@ -128,6 +128,7 @@ import type * as seed from "../seed.js";
 import type * as services_banks from "../services/banks.js";
 import type * as services_content from "../services/content.js";
 import type * as services_memory from "../services/memory.js";
+import type * as services_notificationManifest from "../services/notificationManifest.js";
 import type * as services_notifications from "../services/notifications.js";
 import type * as services_orders from "../services/orders.js";
 import type * as services_partners from "../services/partners.js";
@@ -262,6 +263,7 @@ declare const fullApi: ApiFromModules<{
   "services/banks": typeof services_banks;
   "services/content": typeof services_content;
   "services/memory": typeof services_memory;
+  "services/notificationManifest": typeof services_notificationManifest;
   "services/notifications": typeof services_notifications;
   "services/orders": typeof services_orders;
   "services/partners": typeof services_partners;

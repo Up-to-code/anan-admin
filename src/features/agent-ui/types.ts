@@ -100,4 +100,31 @@ export type AssistantPayload =
       state: "pending" | "confirmed" | "cancelled" | "executed" | "failed";
       title: string;
       details?: string;
+    }
+  | {
+      type: "engagement";
+      conversationObjective?: string;
+      missingFields?: Array<{
+        key: string;
+        label: string;
+        required: boolean;
+        value?: string;
+      }>;
+      suggestedActions?: Array<{
+        id: string;
+        label: string;
+        action: string;
+        payload?: unknown;
+      }>;
+      responseSections?: {
+        answer?: string;
+        details?: string[];
+        nextStep?: string;
+      };
+      progressStage?:
+        | "analyzing"
+        | "memory"
+        | "searching"
+        | "validating"
+        | "formatting";
     };

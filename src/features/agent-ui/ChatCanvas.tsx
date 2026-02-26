@@ -2,14 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowDown, Bot } from "lucide-react";
+import type { Id } from "convex/_generated/dataModel";
 import { ar } from "@/lib/ar";
 import { Button } from "@/components/ui/button";
-import type { AgentMessage } from "./types";
+import type { AgentMessage, PendingAction } from "./types";
 import { MessageBubbleHuman } from "./MessageBubbleHuman";
 import { MessageBubbleAgent } from "./MessageBubbleAgent";
 import { Composer } from "./Composer";
 import { ThinkingIndicator } from "@/components/chat/ThinkingIndicator";
 import { Separator } from "@/components/ui/separator";
+import { PendingActionPanel } from "./PendingActionPanel";
+import { parseAssistantPayload } from "./parseAssistantPayload";
+import { Badge } from "@/components/ui/badge";
 
 const SUGGESTED_PROMPTS = [
   "أنشئ عقارا جديدا من هذا الوصف",
@@ -20,14 +24,23 @@ const SUGGESTED_PROMPTS = [
 
 export function ChatCanvas({
   messages,
+  pendingActions,
   isThinking,
   isSending,
   onSend,
   onSlashCommand,
+  onUpdatePendingPayload,
+  onConfirmPendingAction,
+  onCancelPendingAction,
+  onGenerateUploadUrl,
+  onAttachPendingMedia,
+  onRemovePendingMedia,
+  onReorderPendingMedia,
   onOpenPendingActions,
   bottomRef,
 }: {
   messages: AgentMessage[];
+  pendingActions: PendingAction[];
   isThinking: boolean;
   isSending: boolean;
   onSend: (value: string) => void;
@@ -35,6 +48,20 @@ export function ChatCanvas({
     command: "rewrite" | "formal" | "summarize",
     text: string,
   ) => Promise<string>;
+  onUpdatePendingPayload: (actionId: Id<"adminPendingActions">, payload: unknown) => Promise<void>;
+  onConfirmPendingAction: (actionId: Id<"adminPendingActions">, payload?: unknown) => Promise<void>;
+  onCancelPendingAction: (actionId: Id<"adminPendingActions">) => Promise<void>;
+  onGenerateUploadUrl: (actionId: Id<"adminPendingActions">) => Promise<string>;
+  onAttachPendingMedia: (
+    actionId: Id<"adminPendingActions">,
+    storageId: Id<"_storage">,
+    kind: "image" | "logo",
+  ) => Promise<void>;
+  onRemovePendingMedia: (mediaId: Id<"entityMedia">) => Promise<void>;
+  onReorderPendingMedia: (
+    actionId: Id<"adminPendingActions">,
+    mediaIds: Id<"entityMedia">[],
+  ) => Promise<void>;
   onOpenPendingActions?: () => void;
   bottomRef: React.RefObject<HTMLDivElement | null>;
 }) {
@@ -70,6 +97,35 @@ export function ChatCanvas({
     }
     lastMessageCountRef.current = messages.length;
   }, [messages.length, isThinking, isNearBottom, scrollToBottom]);
+
+  const lastEngagement = [...messages]
+    .reverse()
+    .filter((msg) => msg.isAi)
+    .map((msg) => parseAssistantPayload(msg.content))
+    .find((payload) => payload?.type === "engagement");
+
+  const handleSuggestedAction = useCallback(
+    (action: { id: string; label: string; action: string; payload?: unknown }) => {
+      const payloadText =
+        action.payload == null
+          ? ""
+          : typeof action.payload === "string"
+            ? action.payload
+            : JSON.stringify(action.payload);
+      onSend([action.action, payloadText].filter(Boolean).join("\n") || action.label);
+    },
+    [onSend],
+  );
+
+  const nextMissingField = lastEngagement?.type === "engagement"
+    ? (lastEngagement.missingFields ?? []).find((field) => !field.value)
+    : undefined;
+  const goalHint = nextMissingField
+    ? `المعلومة التالية المطلوبة: ${nextMissingField.label}`
+    : lastEngagement?.type === "engagement"
+      ? lastEngagement.conversationObjective
+      : undefined;
+  const statusLabel = isThinking ? "الوكيل يحلل الطلب ويجهز الرد" : "جاهز للإرسال";
 
   return (
     <div className="flex-1 flex flex-col h-full min-h-0 relative">
@@ -121,11 +177,35 @@ export function ChatCanvas({
           </div>
         ) : (
           <div className="w-full max-w-3xl mx-auto py-8 flex flex-col gap-6 pb-32">
+            {lastEngagement?.type === "engagement" ? (
+              <div className="rounded-xl border border-border bg-card/40 px-3 py-2">
+                {lastEngagement.conversationObjective ? (
+                  <p className="text-sm font-medium text-foreground">
+                    {lastEngagement.conversationObjective}
+                  </p>
+                ) : null}
+                {(lastEngagement.missingFields?.length ?? 0) > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {lastEngagement.missingFields
+                      ?.filter((field) => !field.value)
+                      .map((field) => (
+                        <Badge key={field.key} variant="outline" className="text-[11px]">
+                          {field.label}
+                        </Badge>
+                      ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             <div className="flex flex-col gap-8 pb-32">
               {messages.map((msg) =>
                 msg.isAi ? (
                   <div key={msg.id} className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <MessageBubbleAgent content={msg.content} status={msg.status} />
+                    <MessageBubbleAgent
+                      content={msg.content}
+                      status={msg.status}
+                      onSuggestedAction={handleSuggestedAction}
+                    />
                   </div>
                 ) : (
                   <div key={msg.id} className="animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -133,6 +213,31 @@ export function ChatCanvas({
                   </div>
                 ),
               )}
+              {pendingActions.length > 0 ? (
+                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 rounded-xl border border-border bg-card/30 p-3">
+                  <div className="mb-3 flex items-center justify-between px-1">
+                    <p className="text-xs font-medium text-foreground">
+                      إجراءات تحتاج تأكيد داخل المحادثة
+                    </p>
+                    <span className="text-xs text-muted-foreground">
+                      {pendingActions.length} إجراء
+                    </span>
+                  </div>
+                  <PendingActionPanel
+                    actions={pendingActions}
+                    updatePayload={onUpdatePendingPayload}
+                    confirmAction={onConfirmPendingAction}
+                    rewriteText={onSlashCommand}
+                    cancelAction={onCancelPendingAction}
+                    generateUploadUrl={onGenerateUploadUrl}
+                    attachMedia={onAttachPendingMedia}
+                    removeMedia={onRemovePendingMedia}
+                    reorderMedia={onReorderPendingMedia}
+                    compact
+                    hideEmptyState
+                  />
+                </div>
+              ) : null}
               {isThinking ? (
                 <div className="flex gap-3 items-center px-4">
                   <ThinkingIndicator />
@@ -163,6 +268,8 @@ export function ChatCanvas({
             onSend={onSend}
             onSlashCommand={onSlashCommand}
             onOpenPendingActions={onOpenPendingActions}
+            goalHint={goalHint}
+            statusLabel={statusLabel}
           />
         </div>
       </div>

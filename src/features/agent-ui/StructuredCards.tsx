@@ -102,6 +102,35 @@ function ActionStateCard({
   );
 }
 
+function EngagementCard({
+  payload,
+}: {
+  payload: Extract<AssistantPayload, { type: "engagement" }>;
+}) {
+  return (
+    <Card className="w-full bg-[#FAFAFA] dark:bg-[#18181B] border-zinc-200 dark:border-zinc-800">
+      <CardHeader>
+        <CardTitle className="text-zinc-900 dark:text-zinc-50">
+          {payload.conversationObjective || "متابعة المحادثة"}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {payload.responseSections?.answer ? <p>{payload.responseSections.answer}</p> : null}
+        {payload.responseSections?.details?.length ? (
+          <ul className="list-disc space-y-1 pr-4 text-sm text-muted-foreground">
+            {payload.responseSections.details.map((detail, idx) => (
+              <li key={`eng-detail-${idx}`}>{detail}</li>
+            ))}
+          </ul>
+        ) : null}
+        {payload.responseSections?.nextStep ? (
+          <p className="text-sm text-muted-foreground">{payload.responseSections.nextStep}</p>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function StructuredCards({ payload }: { payload: AssistantPayload }) {
   switch (payload.type) {
     case "summary_block":
@@ -114,6 +143,8 @@ export function StructuredCards({ payload }: { payload: AssistantPayload }) {
       return <DeveloperCard payload={payload} />;
     case "action_state":
       return <ActionStateCard payload={payload} />;
+    case "engagement":
+      return <EngagementCard payload={payload} />;
     default:
       return null;
   }

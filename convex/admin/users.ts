@@ -173,8 +173,12 @@ async function enrichUsersWithPhoneAndRole(
 }
 
 export const listUsers = query({
-  args: { limit: v.optional(v.number()) },
-  handler: async (ctx, { limit = 50 }) => {
+  args: {
+    limit: v.optional(v.number()),
+    fromMs: v.optional(v.number()),
+    toMs: v.optional(v.number()),
+  },
+  handler: async (ctx, { limit = 50, fromMs, toMs }) => {
     await requireAdmin(ctx);
     const page = await fetchMergedUserList(ctx, limit);
 
@@ -229,8 +233,13 @@ export const listUsers = query({
       if (atA !== atB) return atB - atA;
       return b._creationTime - a._creationTime;
     });
-
-    return withActivity;
+    const filtered = withActivity.filter((user) => {
+      const ts = user.lastActivityAt ?? user._creationTime;
+      if (fromMs !== undefined && ts < fromMs) return false;
+      if (toMs !== undefined && ts > toMs) return false;
+      return true;
+    });
+    return filtered;
   },
 });
 
@@ -543,6 +552,31 @@ export const notificationsList = query({
     userId: v.optional(v.string()),
     unreadOnly: v.optional(v.boolean()),
     type: v.optional(v.string()),
+    audience: v.optional(
+      v.union(
+        v.literal("sales"),
+        v.literal("admin"),
+        v.literal("user"),
+        v.literal("system"),
+      ),
+    ),
+    priority: v.optional(
+      v.union(
+        v.literal("low"),
+        v.literal("medium"),
+        v.literal("high"),
+        v.literal("urgent"),
+      ),
+    ),
+    status: v.optional(
+      v.union(
+        v.literal("new"),
+        v.literal("acknowledged"),
+        v.literal("resolved"),
+      ),
+    ),
+    fromMs: v.optional(v.number()),
+    toMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
@@ -564,8 +598,87 @@ export const notificationsList = query({
       page: result.page.filter((n) => {
         if (args.unreadOnly && n.read) return false;
         if (args.type && n.type !== args.type) return false;
+        if (args.audience && n.audience !== args.audience) return false;
+        if (args.priority && n.priority !== args.priority) return false;
+        if (args.status && n.status !== args.status) return false;
+        if (args.fromMs !== undefined && n._creationTime < args.fromMs) return false;
+        if (args.toMs !== undefined && n._creationTime > args.toMs) return false;
         return true;
       }),
+    };
+  },
+});
+
+export const userActivitySeries = query({
+  args: {
+    userId: v.string(),
+    fromMs: v.optional(v.number()),
+    toMs: v.optional(v.number()),
+    bucket: v.optional(
+      v.union(v.literal("hour"), v.literal("day"), v.literal("week"), v.literal("month")),
+    ),
+    activityType: v.optional(v.union(v.literal("all"), v.literal("message_sent"), v.literal("search"), v.literal("order_created"), v.literal("login"), v.literal("property_viewed"))),
+  },
+  handler: async (ctx, { userId, fromMs, toMs, bucket, activityType = "all" }) => {
+    await requireAdmin(ctx);
+    const now = Date.now();
+    const start = fromMs ?? now - 7 * 24 * 60 * 60 * 1000;
+    const end = toMs ?? now;
+    const duration = Math.max(60 * 60 * 1000, end - start);
+    const resolvedBucket =
+      bucket ??
+      (duration <= 48 * 60 * 60 * 1000
+        ? "hour"
+        : duration <= 90 * 24 * 60 * 60 * 1000
+          ? "day"
+          : duration <= 365 * 24 * 60 * 60 * 1000
+            ? "week"
+            : "month");
+    const bucketMs =
+      resolvedBucket === "hour"
+        ? 60 * 60 * 1000
+        : resolvedBucket === "day"
+          ? 24 * 60 * 60 * 1000
+          : resolvedBucket === "week"
+            ? 7 * 24 * 60 * 60 * 1000
+            : 30 * 24 * 60 * 60 * 1000;
+    const bucketCount = Math.max(1, Math.min(180, Math.ceil(duration / bucketMs)));
+
+    const [activities, searchLogs, notifications, orders] = await Promise.all([
+      ctx.db.query("userActivity").withIndex("userId", (q) => q.eq("userId", userId)).collect(),
+      ctx.db.query("searchLogs").withIndex("userId", (q) => q.eq("userId", userId)).collect(),
+      ctx.db.query("notifications").withIndex("userId", (q) => q.eq("userId", userId)).collect(),
+      ctx.db.query("orders").withIndex("userId", (q) => q.eq("userId", userId)).collect(),
+    ]);
+
+    const activitySeries = new Array(bucketCount).fill(0);
+    const searchSeries = new Array(bucketCount).fill(0);
+    const notificationSeries = new Array(bucketCount).fill(0);
+    const orderSeries = new Array(bucketCount).fill(0);
+
+    const pushPoint = (ts: number, target: number[]) => {
+      if (ts < start || ts > end) return;
+      const idx = Math.min(Math.floor((ts - start) / bucketMs), bucketCount - 1);
+      if (idx >= 0) target[idx] += 1;
+    };
+
+    for (const row of activities) {
+      if (activityType !== "all" && row.action !== activityType) continue;
+      pushPoint(row._creationTime, activitySeries);
+    }
+    for (const row of searchLogs) pushPoint(row._creationTime, searchSeries);
+    for (const row of notifications) pushPoint(row._creationTime, notificationSeries);
+    for (const row of orders) pushPoint(row._creationTime, orderSeries);
+
+    return {
+      bucket: resolvedBucket,
+      bucketCount,
+      fromMs: start,
+      toMs: end,
+      activitySeries,
+      searchSeries,
+      notificationSeries,
+      orderSeries,
     };
   },
 });
@@ -626,7 +739,7 @@ export const getUserFullData = query({
   handler: async (ctx, { userId }) => {
     await requireAdmin(ctx);
 
-    let profile = await ctx.db
+    const profile = await ctx.db
       .query("userProfiles")
       .withIndex("userId", (q) => q.eq("userId", userId))
       .first();

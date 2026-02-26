@@ -7,6 +7,7 @@ import { api } from "convex/_generated/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Bell,
@@ -30,6 +31,17 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { PageHeader, StatCard, EmptyState, SearchInput } from "@/components/admin/ui";
+import {
+  TimeStatusFilter,
+  type TimeFilterValue,
+} from "@/components/admin/TimeStatusFilter";
+
+const audienceOptions = ["all", "system", "sales", "admin", "user"] as const;
+type AudienceFilter = (typeof audienceOptions)[number];
+const priorityOptions = ["all", "low", "medium", "high", "urgent"] as const;
+type PriorityFilter = (typeof priorityOptions)[number];
+const statusOptions = ["all", "new", "acknowledged", "resolved"] as const;
+type StatusFilter = (typeof statusOptions)[number];
 
 const priorityConfig = {
   low: { label: "منخفض", className: "bg-gray-500/10 text-gray-600 border-gray-500/20" },
@@ -37,6 +49,13 @@ const priorityConfig = {
   high: { label: "عالٍ", className: "bg-amber-500/10 text-amber-600 border-blue-500/20" }, // Fixed color inconsistency
   urgent: { label: "عاجل", className: "bg-rose-500/10 text-rose-600 border-rose-500/20" },
 };
+
+const audienceConfig = {
+  system: { label: "نظام", className: "bg-gray-500/10 text-gray-600 border-gray-500/20" },
+  sales: { label: "مبيعات", className: "bg-violet-500/10 text-violet-600 border-violet-500/20" },
+  admin: { label: "إدارة", className: "bg-amber-500/10 text-amber-600 border-amber-500/20" },
+  user: { label: "مستخدم", className: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" },
+} as const;
 
 const typeConfig = {
   order: { label: "طلب", icon: ShoppingCart, color: "blue" },
@@ -53,6 +72,7 @@ function NotificationCard({ item, onAck, onResolve }: {
 }) {
   const priority = priorityConfig[item.priority as keyof typeof priorityConfig] || priorityConfig.medium;
   const type = typeConfig[item.type as keyof typeof typeConfig] || typeConfig.system;
+  const audience = audienceConfig[(item.audience as keyof typeof audienceConfig) || "system"];
   const TypeIcon = type.icon;
   const isUrgent = item.priority === "urgent" || item.priority === "high";
 
@@ -96,6 +116,9 @@ function NotificationCard({ item, onAck, onResolve }: {
               )}
               <Badge variant="outline" className={cn("text-[10px]", priority.className)}>
                 {priority.label}
+              </Badge>
+              <Badge variant="outline" className={cn("text-[10px]", audience.className)}>
+                {audience.label}
               </Badge>
               <Badge variant="secondary" className="text-[10px]">
                 <TypeIcon className="h-3 w-3 ml-1" />
@@ -156,8 +179,33 @@ function NotificationCard({ item, onAck, onResolve }: {
 export default function NotificationsPage() {
   const [filter, setFilter] = React.useState("all");
   const [typeFilter, setTypeFilter] = React.useState("all");
+  const [audienceFilter, setAudienceFilter] =
+    React.useState<AudienceFilter>("all");
+  const [priorityFilter, setPriorityFilter] =
+    React.useState<PriorityFilter>("all");
+  const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("all");
   const [search, setSearch] = React.useState("");
+  const [timeFilter, setTimeFilter] = React.useState<TimeFilterValue>({
+    preset: "7d",
+    fromMs: Date.now() - 7 * 24 * 60 * 60 * 1000,
+    toMs: Date.now(),
+  });
   const isAdmin = useQuery(api.features.admin.api.isAdmin);
+  const onAudienceChange = React.useCallback((value: string) => {
+    if (audienceOptions.includes(value as AudienceFilter)) {
+      setAudienceFilter(value as AudienceFilter);
+    }
+  }, []);
+  const onPriorityChange = React.useCallback((value: string) => {
+    if (priorityOptions.includes(value as PriorityFilter)) {
+      setPriorityFilter(value as PriorityFilter);
+    }
+  }, []);
+  const onStatusChange = React.useCallback((value: string) => {
+    if (statusOptions.includes(value as StatusFilter)) {
+      setStatusFilter(value as StatusFilter);
+    }
+  }, []);
 
   const result = useQuery(
     api.features.admin.api.notificationsList,
@@ -166,6 +214,11 @@ export default function NotificationsPage() {
         paginationOpts: { cursor: null, numItems: 50 },
         unreadOnly: filter === "unread",
         type: typeFilter !== "all" ? typeFilter : undefined,
+        audience: audienceFilter !== "all" ? audienceFilter : undefined,
+        priority: priorityFilter !== "all" ? priorityFilter : undefined,
+        status: statusFilter !== "all" ? statusFilter : undefined,
+        fromMs: timeFilter.fromMs,
+        toMs: timeFilter.toMs,
       }
       : "skip",
   );
@@ -238,6 +291,59 @@ export default function NotificationsPage() {
           </Select>
         </div>
       </div>
+
+      <TimeStatusFilter
+        value={timeFilter}
+        onTimeChange={setTimeFilter}
+        extraFilters={
+          <div className="grid w-full gap-2 md:grid-cols-3">
+            <div>
+              <Label className="mb-1 block text-xs">الجمهور</Label>
+              <Select value={audienceFilter} onValueChange={onAudienceChange}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">الكل</SelectItem>
+                  <SelectItem value="system">نظام</SelectItem>
+                  <SelectItem value="sales">مبيعات</SelectItem>
+                  <SelectItem value="admin">إدارة</SelectItem>
+                  <SelectItem value="user">مستخدم</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="mb-1 block text-xs">الأولوية</Label>
+              <Select value={priorityFilter} onValueChange={onPriorityChange}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">الكل</SelectItem>
+                  <SelectItem value="low">منخفض</SelectItem>
+                  <SelectItem value="medium">متوسط</SelectItem>
+                  <SelectItem value="high">عالٍ</SelectItem>
+                  <SelectItem value="urgent">عاجل</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="mb-1 block text-xs">حالة الإشعار</Label>
+              <Select value={statusFilter} onValueChange={onStatusChange}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">الكل</SelectItem>
+                  <SelectItem value="new">جديد</SelectItem>
+                  <SelectItem value="acknowledged">مقروء</SelectItem>
+                  <SelectItem value="resolved">محلول</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        }
+      />
 
       <div className="space-y-3">
         {loading ? (

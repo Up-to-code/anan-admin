@@ -32,6 +32,10 @@ import {
   EmptyState,
   ResultCount,
 } from "@/components/admin/ui";
+import {
+  TimeStatusFilter,
+  type TimeFilterValue,
+} from "@/components/admin/TimeStatusFilter";
 
 function UserCard({ user }: { user: any }) {
   const initials = user.name?.charAt(0) || "ع";
@@ -101,8 +105,17 @@ export default function UsersPage() {
   const [search, setSearch] = React.useState("");
   const [roleFilter, setRoleFilter] = React.useState<string>("all");
   const [sortBy, setSortBy] = React.useState<string>("recent");
+  const [timeFilter, setTimeFilter] = React.useState<TimeFilterValue>({
+    preset: "7d",
+    fromMs: Date.now() - 7 * 24 * 60 * 60 * 1000,
+    toMs: Date.now(),
+  });
 
-  const users = useQuery(api.features.admin.api.listUsers, { limit: 50 });
+  const users = useQuery(api.features.admin.api.listUsers, {
+    limit: 50,
+    fromMs: timeFilter.fromMs,
+    toMs: timeFilter.toMs,
+  });
   const loading = users === undefined;
 
   const filteredAndSortedUsers = React.useMemo(() => {
@@ -221,6 +234,8 @@ export default function UsersPage() {
           </SelectContent>
         </Select>
       </div>
+
+      <TimeStatusFilter value={timeFilter} onTimeChange={setTimeFilter} />
 
       {loading ? (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">

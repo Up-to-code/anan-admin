@@ -7,13 +7,16 @@ import { StructuredCards } from "./StructuredCards";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { Markdown } from "./Markdown";
+import { Button } from "@/components/ui/button";
 
 export function MessageBubbleAgent({
   content,
   status,
+  onSuggestedAction,
 }: {
   content: string;
   status?: "streaming" | "finished" | "aborted";
+  onSuggestedAction?: (action: { id: string; label: string; action: string; payload?: unknown }) => void;
 }) {
   const [visibleText] = useSmoothText(content, {
     startStreaming: status === "streaming",
@@ -23,6 +26,36 @@ export function MessageBubbleAgent({
   const parsed = !isStreaming ? parseAssistantPayload(content) : null;
 
   if (parsed && parsed.type !== "text") {
+    if (parsed.type === "engagement") {
+      return (
+        <div className="flex gap-3 items-start max-w-full">
+          <Avatar className="h-8 w-8 mt-1 border border-border shrink-0">
+            <AvatarFallback className="bg-muted text-muted-foreground">
+              <Bot size={15} />
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0 overflow-hidden break-words" style={{ maxWidth: "85%" }}>
+            <StructuredCards payload={parsed} />
+            {(parsed.suggestedActions?.length ?? 0) > 0 && onSuggestedAction ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {parsed.suggestedActions?.map((action) => (
+                  <Button
+                    key={action.id}
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="h-8 rounded-full text-xs"
+                    onClick={() => onSuggestedAction(action)}
+                  >
+                    {action.label}
+                  </Button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="flex gap-3 items-start max-w-full">
         <Avatar className="h-8 w-8 mt-1 border border-border shrink-0">

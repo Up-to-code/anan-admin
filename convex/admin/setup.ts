@@ -5,7 +5,7 @@
 import { mutation, query } from "../_generated/server";
 import { ConvexError, v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
-import { api, components } from "../_generated/api";
+import { components } from "../_generated/api";
 import {
   requireAuth,
   requireAdmin,
@@ -111,7 +111,7 @@ export const conversationsListUsersWithThreads = query({
   returns: v.any(),
   handler: async (ctx, args): Promise<unknown> => {
     await requireAdmin(ctx);
-    return ctx.runQuery(api.agents.actions.listUsersWithThreads, {
+    return ctx.runQuery(components.agent.users.listUsersWithThreads, {
       paginationOpts: args.paginationOpts,
     });
   },
@@ -125,10 +125,10 @@ export const conversationsGetThreadMessages = query({
   returns: v.any(),
   handler: async (ctx, args): Promise<unknown> => {
     await requireAdmin(ctx);
-    return ctx.runQuery(api.agents.actions.getThreadMessages, {
+    return ctx.runQuery(components.agent.messages.listMessagesByThreadId, {
       threadId: args.threadId,
       paginationOpts: args.paginationOpts,
-      allowAdmin: true,
+      order: "desc",
     });
   },
 });

@@ -309,7 +309,8 @@ export async function handleWhatsAppWebhookPost(ctx: Ctx, request: Request): Pro
       }
     }
 
-    await ctx.runMutation(api.services.users.ensureWhatsAppUser, {
+    const apiAny = api as any;
+    await ctx.runMutation(apiAny.services.users.ensureWhatsAppUser, {
       userId,
       displayName: event.displayName,
     });
@@ -318,8 +319,9 @@ export async function handleWhatsAppWebhookPost(ctx: Ctx, request: Request): Pro
       await wa.sendTyping(event.messageId);
     }
 
+    const internalAny = internal as any;
     const { text: replyText, imageUrl, imageUrls, offerBlocks } = await ctx.runAction(
-      internal.agents.actions.generateReplyAndReturnText,
+      internalAny.agents.actions.generateReplyAndReturnText,
       { userId, message: event.text, channel: "whatsapp" }
     );
 

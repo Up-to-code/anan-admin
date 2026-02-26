@@ -62,11 +62,14 @@ const defaultPrompts = [
 ];
 
 const modelOptions = [
+  { value: "moonshotai/kimi-k2-thinking", label: "Kimi K2 Thinking", tier: "premium" },
   { value: "openai/gpt-4o", label: "GPT-4o", tier: "premium" },
+  { value: "anthropic/claude-sonnet-4.6", label: "Claude Sonnet 4.6", tier: "premium" },
+  { value: "qwen/qwen3.5-plus", label: "Qwen 3.5 Plus", tier: "standard" },
   { value: "openai/gpt-4o-mini", label: "GPT-4o Mini", tier: "standard" },
   {
-    value: "anthropic/claude-3.5-sonnet",
-    label: "Claude 3.5 Sonnet",
+    value: "anthropic/claude-opus-4.6",
+    label: "Claude Opus 4.6",
     tier: "premium",
   },
   {

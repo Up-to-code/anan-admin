@@ -22,6 +22,10 @@ import {
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import {
+  TimeStatusFilter,
+  type TimeFilterValue,
+} from "@/components/admin/TimeStatusFilter";
+import {
   ORDER_STATUS,
   ORDER_STATUS_LIST,
   type OrderStatus,
@@ -118,6 +122,11 @@ function OrderRow({ order }: { order: any }) {
 export default function OrdersPage() {
   const [search, setSearch] = React.useState("");
   const [activeStage, setActiveStage] = React.useState<string>("all");
+  const [timeFilter, setTimeFilter] = React.useState<TimeFilterValue>({
+    preset: "7d",
+    fromMs: Date.now() - 7 * 24 * 60 * 60 * 1000,
+    toMs: Date.now(),
+  });
   const isAdmin = useQuery(api.features.admin.api.isAdmin);
 
   const orders = useQuery(
@@ -126,18 +135,24 @@ export default function OrdersPage() {
       ? {
         limit: 100,
         status: activeStage === "all" ? undefined : (activeStage as any),
+        fromMs: timeFilter.fromMs,
+        toMs: timeFilter.toMs,
       }
       : "skip",
   ) as any[] | undefined;
 
   const summary = useQuery(
     api.features.admin.api.pipelineSummary,
-    isAdmin === true ? undefined : "skip",
+    isAdmin === true
+      ? { fromMs: timeFilter.fromMs, toMs: timeFilter.toMs }
+      : "skip",
   );
 
   const board = useQuery(
     api.features.admin.api.pipelineBoard,
-    isAdmin === true ? { limitPerStage: 30 } : "skip",
+    isAdmin === true
+      ? { limitPerStage: 30, fromMs: timeFilter.fromMs, toMs: timeFilter.toMs }
+      : "skip",
   ) as any[] | undefined;
 
   const loading = orders === undefined;
@@ -260,6 +275,11 @@ export default function OrdersPage() {
           />
         ))}
       </div>
+
+      <TimeStatusFilter
+        value={timeFilter}
+        onTimeChange={setTimeFilter}
+      />
 
       {/* ── Search ── */}
       <div className="relative">

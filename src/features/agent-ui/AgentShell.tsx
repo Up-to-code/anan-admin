@@ -268,10 +268,18 @@ export function AgentShell({
 
         <ChatCanvas
           messages={messages}
+          pendingActions={sortedPending}
           isThinking={isThinking}
           isSending={isSending}
           onSend={onSendMessage}
           onSlashCommand={onSlashCommand}
+          onUpdatePendingPayload={onUpdatePendingPayload}
+          onConfirmPendingAction={onConfirmPendingAction}
+          onCancelPendingAction={onCancelPendingAction}
+          onGenerateUploadUrl={onGenerateUploadUrl}
+          onAttachPendingMedia={onAttachPendingMedia}
+          onRemovePendingMedia={onRemovePendingMedia}
+          onReorderPendingMedia={onReorderPendingMedia}
           onOpenPendingActions={() => {
             setUtilityTab("actions");
             setUtilityOpen(true);

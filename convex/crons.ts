@@ -2,18 +2,19 @@ import { cronJobs } from "convex/server";
 import { internal } from "./_generated/api";
 
 const crons = cronJobs();
+const internalAny = internal as any;
 
 crons.interval(
   "archive expired agent threads",
   { hours: 1 },
-  internal.agents.actions.archiveExpiredThreads,
+  internalAny.agents.actions.archiveExpiredThreads,
   { limit: 100 }
 );
 
 crons.interval(
   "delete expired search cache",
   { minutes: 15 },
-  internal.services.properties.deleteExpiredKnowledgeResearch,
+  internalAny.services.properties.deleteExpiredKnowledgeResearch,
   { limit: 500 }
 );
 

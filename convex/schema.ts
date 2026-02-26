@@ -241,6 +241,8 @@ export default defineSchema({
     recommendedPropertyIds: v.optional(v.array(v.id("properties"))),
     recommendedBankProductIds: v.optional(v.array(v.id("bankProducts"))),
     assignedTo: v.optional(v.string()),
+    mentionedUserIds: v.optional(v.array(v.string())),
+    mentionNote: v.optional(v.string()),
     priority: v.optional(
       v.union(
         v.literal("low"),
@@ -443,7 +445,12 @@ export default defineSchema({
     type: v.optional(v.string()),
     linkId: v.optional(v.string()),
     audience: v.optional(
-      v.union(v.literal("sales"), v.literal("admin"), v.literal("user")),
+      v.union(
+        v.literal("sales"),
+        v.literal("admin"),
+        v.literal("user"),
+        v.literal("system"),
+      ),
     ),
     entityType: v.optional(
       v.union(v.literal("order"), v.literal("handoff"), v.literal("customer")),

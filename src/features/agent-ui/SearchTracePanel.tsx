@@ -39,7 +39,7 @@ export function SearchTracePanel({ trace }: SearchTracePanelProps) {
       <div className="flex items-center justify-between p-3 border-b border-border bg-muted/50">
         <div className="flex items-center gap-2">
           <h3 className="font-semibold text-sm">{ar.searchSources}</h3>
-          <span className="text-xs text-muted-foreground bg-background px-2 py-0.5 rounded-full border border-border">"{trace.query}"</span>
+          <span className="text-xs text-muted-foreground bg-background px-2 py-0.5 rounded-full border border-border">«{trace.query}»</span>
         </div>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">

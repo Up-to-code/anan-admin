@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Upload, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { Id } from "convex/_generated/dataModel";
@@ -10,6 +10,7 @@ import { ar } from "@/lib/ar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { PendingAction, PendingMedia } from "./types";
@@ -33,6 +34,107 @@ function getStatusColor(status: PendingAction["status"]) {
   }
 }
 
+type DraftField = {
+  key: string;
+  label: string;
+  type: "text" | "number" | "textarea" | "select";
+  placeholder?: string;
+  options?: Array<{ value: string; label: string }>;
+};
+
+const REQUIRED_KEYS_BY_ACTION: Record<string, string[]> = {
+  createProperty: ["title", "price", "location"],
+  createBank: ["name", "slug", "status"],
+  createDeveloper: ["name", "slug", "status"],
+  createBankProduct: ["bankId", "name", "type"],
+};
+
+function hasMeaningfulValue(value: unknown): boolean {
+  if (value == null) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "boolean") return true;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value).length > 0;
+  return false;
+}
+
+function getDraftFields(actionType: string): DraftField[] {
+  if (actionType === "createProperty") {
+    return [
+      { key: "title", label: "العنوان", type: "text" },
+      { key: "address", label: "العنوان الكامل", type: "text" },
+      { key: "price", label: "السعر", type: "number" },
+      { key: "beds", label: "غرف النوم", type: "number" },
+      { key: "baths", label: "الحمامات", type: "number" },
+      { key: "location", label: "المدينة", type: "text" },
+      { key: "area", label: "الحي/المنطقة", type: "text" },
+      { key: "sqft", label: "المساحة (قدم)", type: "number" },
+      {
+        key: "status",
+        label: "الحالة",
+        type: "select",
+        options: [
+          { value: "available", label: "متاح" },
+          { value: "reserved", label: "محجوز" },
+          { value: "sold", label: "مباع" },
+        ],
+      },
+      { key: "description", label: "الوصف", type: "textarea" },
+    ];
+  }
+
+  if (actionType === "createBank") {
+    return [
+      { key: "name", label: "اسم البنك", type: "text" },
+      { key: "slug", label: "المعرف (slug)", type: "text" },
+      { key: "contactEmail", label: "البريد الإلكتروني", type: "text" },
+      {
+        key: "status",
+        label: "الحالة",
+        type: "select",
+        options: [
+          { value: "active", label: "نشط" },
+          { value: "inactive", label: "غير نشط" },
+          { value: "suspended", label: "معلّق" },
+        ],
+      },
+      { key: "description", label: "الوصف", type: "textarea" },
+    ];
+  }
+
+  if (actionType === "createDeveloper") {
+    return [
+      { key: "name", label: "اسم المطور", type: "text" },
+      { key: "slug", label: "المعرف (slug)", type: "text" },
+      { key: "contactEmail", label: "البريد الإلكتروني", type: "text" },
+      { key: "phone", label: "رقم الجوال", type: "text" },
+      { key: "website", label: "الموقع", type: "text" },
+      {
+        key: "status",
+        label: "الحالة",
+        type: "select",
+        options: [
+          { value: "pending", label: "بانتظار التفعيل" },
+          { value: "active", label: "نشط" },
+        ],
+      },
+      { key: "description", label: "الوصف", type: "textarea" },
+    ];
+  }
+
+  if (actionType === "createBankProduct") {
+    return [
+      { key: "bankId", label: "معرف البنك", type: "text" },
+      { key: "name", label: "اسم المنتج", type: "text" },
+      { key: "type", label: "النوع", type: "text" },
+      { key: "description", label: "الوصف", type: "textarea" },
+    ];
+  }
+
+  return [];
+}
+
 export function PendingActionPanel({
   actions,
   updatePayload,
@@ -43,6 +145,9 @@ export function PendingActionPanel({
   attachMedia,
   removeMedia,
   reorderMedia,
+  compact = false,
+  hideEmptyState = false,
+  className,
 }: {
   actions: PendingAction[];
   updatePayload: (actionId: Id<"adminPendingActions">, payload: unknown) => Promise<void>;
@@ -57,9 +162,21 @@ export function PendingActionPanel({
   ) => Promise<void>;
   removeMedia: (mediaId: Id<"entityMedia">) => Promise<void>;
   reorderMedia: (actionId: Id<"adminPendingActions">, mediaIds: Id<"entityMedia">[]) => Promise<void>;
+  compact?: boolean;
+  hideEmptyState?: boolean;
+  className?: string;
 }) {
+  if (hideEmptyState && actions.length === 0) {
+    return null;
+  }
+
   return (
-    <div className="h-full overflow-y-auto p-4 space-y-4">
+    <div
+      className={cn(
+        compact ? "space-y-3" : "h-full overflow-y-auto p-4 space-y-4",
+        className
+      )}
+    >
       {actions.length === 0 ? (
         <Card className="text-center py-12 border-dashed">
           <CardContent className="space-y-3 pt-6">
@@ -115,9 +232,13 @@ function PendingActionItem({
   removeMedia: (mediaId: Id<"entityMedia">) => Promise<void>;
   reorderMedia: (actionId: Id<"adminPendingActions">, mediaIds: Id<"entityMedia">[]) => Promise<void>;
 }) {
-  const [payloadText, setPayloadText] = useState(
-    JSON.stringify(action.editablePayload ?? {}, null, 2)
+  const [payloadDraft, setPayloadDraft] = useState<Record<string, unknown>>(
+    typeof action.editablePayload === "object" && action.editablePayload
+      ? (action.editablePayload as Record<string, unknown>)
+      : {}
   );
+  const [payloadText, setPayloadText] = useState(JSON.stringify(payloadDraft, null, 2));
+  const [advancedMode, setAdvancedMode] = useState(false);
   const media = useQuery(api.features.admin.agentActions.listPendingActionMedia, {
     actionId: action._id,
   }) as PendingMedia[] | undefined;
@@ -133,20 +254,89 @@ function PendingActionItem({
   } | null>(null);
 
   useEffect(() => {
-    setPayloadText(JSON.stringify(action.editablePayload ?? {}, null, 2));
+    const nextDraft =
+      typeof action.editablePayload === "object" && action.editablePayload
+        ? (action.editablePayload as Record<string, unknown>)
+        : {};
+    setPayloadDraft(nextDraft);
+    setPayloadText(JSON.stringify(nextDraft, null, 2));
+    setAdvancedMode(false);
   }, [action._id, action.editablePayload]);
+
+  const draftFields = useMemo(() => {
+    const predefined = getDraftFields(action.actionType);
+    if (predefined.length > 0) return predefined;
+
+    const inferred: DraftField[] = [];
+    for (const [key, value] of Object.entries(payloadDraft)) {
+      if (value == null) {
+        inferred.push({ key, label: key, type: "text" });
+        continue;
+      }
+      if (typeof value === "number") {
+        inferred.push({ key, label: key, type: "number" });
+        continue;
+      }
+      if (typeof value === "boolean") {
+        inferred.push({
+          key,
+          label: key,
+          type: "select",
+          options: [
+            { value: "true", label: "true" },
+            { value: "false", label: "false" },
+          ],
+        });
+        continue;
+      }
+      if (typeof value === "string") {
+        inferred.push({
+          key,
+          label: key,
+          type:
+            value.length > 80 ||
+            key.includes("description") ||
+            key.includes("summary") ||
+            key.includes("content")
+              ? "textarea"
+              : "text",
+        });
+      }
+    }
+    return inferred;
+  }, [action.actionType, payloadDraft]);
+  const hasStructuredForm = draftFields.length > 0;
+  const requiredKeys = REQUIRED_KEYS_BY_ACTION[action.actionType] ?? [];
+  const missingRequiredFields = draftFields.filter(
+    (field) =>
+      requiredKeys.includes(field.key) && !hasMeaningfulValue(payloadDraft[field.key]),
+  );
+  const isConfirmBlocked = action.status === "pending" && missingRequiredFields.length > 0;
 
   const canUploadMedia =
     action.status === "pending" &&
     (action.entityType === "property" || action.entityType === "bank" || action.entityType === "partner");
 
+  const updateDraftField = useCallback((key: string, value: unknown) => {
+    setPayloadDraft((prev) => {
+      const next = { ...prev, [key]: value };
+      setPayloadText(JSON.stringify(next, null, 2));
+      return next;
+    });
+  }, []);
+
   const parsePayload = useCallback(() => {
+    if (!advancedMode) {
+      return payloadDraft;
+    }
     try {
-      return JSON.parse(payloadText) as Record<string, unknown>;
+      const parsed = JSON.parse(payloadText) as Record<string, unknown>;
+      setPayloadDraft(parsed);
+      return parsed;
     } catch {
       throw new Error("تنسيق JSON غير صالح");
     }
-  }, [payloadText]);
+  }, [advancedMode, payloadDraft, payloadText]);
 
   const pickRewritableField = (
     payload: Record<string, unknown>
@@ -213,12 +403,124 @@ function PendingActionItem({
       </CardHeader>
 
       <CardContent className="p-4 space-y-4">
-        <Textarea
-          className="font-mono text-sm min-h-[120px] bg-background"
-          value={payloadText}
-          onChange={(e) => setPayloadText(e.target.value)}
-          disabled={action.status !== "pending"}
-        />
+        {hasStructuredForm ? (
+          <div className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-3 py-2">
+            <p className="text-xs text-muted-foreground">
+              {advancedMode ? "وضع JSON المتقدم" : "وضع الحقول المرئية"}
+            </p>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={action.status !== "pending"}
+              onClick={() => setAdvancedMode((v) => !v)}
+            >
+              {advancedMode ? "الرجوع للحقول" : "عرض JSON"}
+            </Button>
+          </div>
+        ) : null}
+
+        {!advancedMode && hasStructuredForm ? (
+          <div className="space-y-3">
+            {missingRequiredFields.length > 0 ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-900/40 dark:bg-amber-950/20">
+                <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                  الحقول المطلوبة قبل التأكيد
+                </p>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {missingRequiredFields.map((field) => (
+                    <Badge key={field.key} variant="outline" className="text-[11px]">
+                      {field.label}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {draftFields.map((field) => {
+              const value = payloadDraft[field.key];
+              const textValue =
+                typeof value === "string" || typeof value === "number"
+                  ? String(value)
+                  : "";
+
+              if (field.type === "textarea") {
+                return (
+                  <div key={field.key} className="space-y-1 md:col-span-2">
+                    <p className="text-xs text-muted-foreground">{field.label}</p>
+                    <Textarea
+                      className="min-h-[100px]"
+                      value={textValue}
+                      onChange={(e) => updateDraftField(field.key, e.target.value)}
+                      disabled={action.status !== "pending"}
+                    />
+                  </div>
+                );
+              }
+
+              if (field.type === "select") {
+                const hasBooleanOptions = (field.options ?? []).some(
+                  (opt) => opt.value === "true" || opt.value === "false"
+                );
+                return (
+                  <div key={field.key} className="space-y-1">
+                    <p className="text-xs text-muted-foreground">{field.label}</p>
+                    <select
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      value={textValue}
+                      onChange={(e) =>
+                        updateDraftField(
+                          field.key,
+                          hasBooleanOptions ? e.target.value === "true" : e.target.value
+                        )
+                      }
+                      disabled={action.status !== "pending"}
+                    >
+                      <option value="">اختر</option>
+                      {(field.options ?? []).map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              }
+
+              return (
+                <div key={field.key} className="space-y-1">
+                  <p className="text-xs text-muted-foreground">
+                    {field.label}
+                    {requiredKeys.includes(field.key) ? " *" : ""}
+                  </p>
+                  <Input
+                    type={field.type === "number" ? "number" : "text"}
+                    value={textValue}
+                    placeholder={field.placeholder}
+                    onChange={(e) =>
+                      updateDraftField(
+                        field.key,
+                        field.type === "number"
+                          ? e.target.value === ""
+                            ? ""
+                            : Number(e.target.value)
+                          : e.target.value
+                      )
+                    }
+                    disabled={action.status !== "pending"}
+                  />
+                </div>
+              );
+            })}
+            </div>
+          </div>
+        ) : (
+          <Textarea
+            className="font-mono text-sm min-h-[120px] bg-background"
+            value={payloadText}
+            onChange={(e) => setPayloadText(e.target.value)}
+            disabled={action.status !== "pending"}
+          />
+        )}
 
         {action.status === "pending" && (
           <div className="flex flex-wrap gap-2">
@@ -280,6 +582,7 @@ function PendingActionItem({
                   try {
                     const payload = parsePayload();
                     payload[rewritePreview.field] = rewritePreview.rewritten;
+                    setPayloadDraft(payload);
                     setPayloadText(JSON.stringify(payload, null, 2));
                     setRewritePreview(null);
                   } catch (error) {
@@ -354,7 +657,7 @@ function PendingActionItem({
           <div className="flex gap-3 pt-2">
             <Button
               className="flex-1"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isConfirmBlocked}
               onClick={async () => {
                 setIsSubmitting(true);
                 try {

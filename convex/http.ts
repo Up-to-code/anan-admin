@@ -9,6 +9,8 @@ import {
 import { detectChannel } from "./channels/types";
 
 const http = httpRouter();
+const apiAny = api as any;
+const internalAny = internal as any;
 
 // Simple in-memory rate limiting for HTTP endpoints
 // Note: This resets on deployment. For production, consider using a distributed rate limiter.
@@ -209,12 +211,12 @@ http.route({
       let tid = threadId;
       if (!tid) {
         const { threadId: newId } = await ctx.runMutation(
-          api.agents.actions.createThreadAction,
+          apiAny.agents.actions.createThreadAction,
           authUser ? { userId: authUser.id } : { userId: anonymousUserId }
         );
         tid = newId;
       }
-      await ctx.runMutation(api.agents.actions.sendMessage, {
+      await ctx.runMutation(apiAny.agents.actions.sendMessage, {
         threadId: tid,
         body: message,
         userId: authUser?.id ?? anonymousUserId,
@@ -308,7 +310,7 @@ http.route({
     }
 
     try {
-      const reply = await ctx.runAction(internal.agents.actions.generateReplyAndReturnText, {
+      const reply = await ctx.runAction(internalAny.agents.actions.generateReplyAndReturnText, {
         userId: userId ?? `test-${crypto.randomUUID()}`,
         message,
         channel: channel ?? detectChannel({ type: "api_chat", headers: request.headers }),
@@ -371,7 +373,7 @@ http.route({
     const { userId, channel } = body as { userId?: string; channel?: "whatsapp" | "app" | "web" };
 
     try {
-      const report = await ctx.runAction(internal.agents.actions.runAllColumnTests, {
+      const report = await ctx.runAction(internalAny.agents.actions.runAllColumnTests, {
         userId: userId ?? `test-column-${crypto.randomUUID()}`,
         channel: channel ?? "app",
       });

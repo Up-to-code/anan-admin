@@ -60,11 +60,15 @@ export default function OrderDetailPage() {
   const orderId = params.id as Id<"orders">;
   const order = useQuery(api.features.admin.api.getOrder, { orderId });
   const updateOrder = useMutation(api.features.admin.api.orderUpdate);
+  const teamMembers = useQuery(api.features.admin.api.listTeamMembers, {});
 
   const [saving, setSaving] = React.useState(false);
   const [assignedTo, setAssignedTo] = React.useState("");
   const [nextAction, setNextAction] = React.useState("");
   const [notes, setNotes] = React.useState("");
+  const [mentionedUserIds, setMentionedUserIds] = React.useState<string[]>([]);
+  const [mentionSearch, setMentionSearch] = React.useState("");
+  const [mentionNote, setMentionNote] = React.useState("");
   const [showAI, setShowAI] = React.useState(false);
 
   React.useEffect(() => {
@@ -72,6 +76,8 @@ export default function OrderDetailPage() {
     setAssignedTo(order.assignedTo ?? "");
     setNextAction(order.nextAction ?? "");
     setNotes(order.notes ?? "");
+    setMentionedUserIds(order.mentionedUserIds ?? []);
+    setMentionNote(order.mentionNote ?? "");
   }, [order]);
 
   async function onSave() {
@@ -83,6 +89,8 @@ export default function OrderDetailPage() {
         assignedTo: assignedTo || undefined,
         nextAction: nextAction || undefined,
         notes: notes || undefined,
+        mentionedUserIds,
+        mentionNote: mentionNote || undefined,
       });
       toast.success("تم الحفظ");
     } catch {
@@ -149,6 +157,18 @@ export default function OrderDetailPage() {
     order.aiHandoffReason ||
     order.customerNeedsSummary ||
     order.salesTalkingPoints;
+  const mentionCandidates = (teamMembers ?? []).filter((member: any) =>
+    member.role === "admin" &&
+    ((member.name ?? "").toLowerCase().includes(mentionSearch.toLowerCase()) ||
+      (member.email ?? "").toLowerCase().includes(mentionSearch.toLowerCase()) ||
+      (member.userId ?? "").toLowerCase().includes(mentionSearch.toLowerCase())),
+  );
+
+  const toggleMention = (userId: string) => {
+    setMentionedUserIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId],
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -381,11 +401,20 @@ export default function OrderDetailPage() {
               <label className="text-xs font-medium text-muted-foreground">
                 {ar.assignedTo}
               </label>
-              <Input
+              <select
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
                 value={assignedTo}
                 onChange={(e) => setAssignedTo(e.target.value)}
-                placeholder="معرّف مسؤول المبيعات"
-              />
+              >
+                <option value="">غير مسند</option>
+                {(teamMembers ?? [])
+                  .filter((member: any) => member.role === "admin")
+                  .map((member: any) => (
+                    <option key={member.userId} value={member.userId}>
+                      {member.name || member.userId} ({member.email || "بدون بريد"})
+                    </option>
+                  ))}
+              </select>
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">
@@ -397,6 +426,64 @@ export default function OrderDetailPage() {
                 placeholder="اتصال - مستندات - عرض"
               />
             </div>
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-muted-foreground">
+              منشن فريق المبيعات
+            </label>
+            <Input
+              value={mentionSearch}
+              onChange={(e) => setMentionSearch(e.target.value)}
+              placeholder="ابحث باسم عضو الفريق..."
+            />
+            <div className="max-h-40 overflow-y-auto rounded-lg border p-2 space-y-1">
+              {mentionCandidates.length === 0 ? (
+                <p className="text-xs text-muted-foreground p-2">لا يوجد أعضاء مطابقون.</p>
+              ) : (
+                mentionCandidates.slice(0, 20).map((member: any) => (
+                  <button
+                    key={member.userId}
+                    type="button"
+                    onClick={() => toggleMention(member.userId)}
+                    className={cn(
+                      "w-full text-right rounded-md px-2 py-1.5 text-sm transition-colors",
+                      mentionedUserIds.includes(member.userId)
+                        ? "bg-primary/10 text-primary"
+                        : "hover:bg-muted",
+                    )}
+                  >
+                    <span className="font-medium">{member.name || "بدون اسم"}</span>
+                    <span className="text-xs text-muted-foreground mr-2">
+                      {member.email || member.userId}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+            {mentionedUserIds.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {mentionedUserIds.map((userId) => {
+                  const user = (teamMembers ?? []).find((m: any) => m.userId === userId);
+                  return (
+                    <Badge key={userId} variant="secondary">
+                      @{user?.name || userId.slice(-6)}
+                    </Badge>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">
+              ملاحظة للمذكورين
+            </label>
+            <Textarea
+              value={mentionNote}
+              onChange={(e) => setMentionNote(e.target.value)}
+              rows={2}
+              className="resize-none"
+              placeholder="اكتب المهمة المطلوبة من الأعضاء المذكورين..."
+            />
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">
