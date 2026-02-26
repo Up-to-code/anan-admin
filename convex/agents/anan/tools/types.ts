@@ -12,6 +12,11 @@ export type AgentToolsApi = {
     getLastSearchContext: FunctionReference<"query", "public">;
     getLastSearchFindings: FunctionReference<"query", "public">;
     getCachedSearchResults: FunctionReference<"query", "public">;
+    getGlobalSearchCache: FunctionReference<"query", "public">;
+    upsertGlobalSearchCache: FunctionReference<"mutation", "public">;
+    trackGlobalSearchCacheHit: FunctionReference<"mutation", "public">;
+    getUserPropertyExposureKeys?: FunctionReference<"query", "public" | "internal">;
+    trackUserPropertyExposure?: FunctionReference<"mutation", "public" | "internal">;
   };
   banks: {
     getById: FunctionReference<"query", "public">;
@@ -35,12 +40,12 @@ export type AgentToolsApi = {
     createDraftFromAgent: FunctionReference<"mutation", "public">;
   };
   memory?: {
-    store: FunctionReference<"mutation", "public">;
-    retrieve: FunctionReference<"query", "public">;
-    getByKey: FunctionReference<"query", "public">;
-    getRelevantContext: FunctionReference<"query", "public">;
-    storeInteraction: FunctionReference<"mutation", "public">;
-    storeEntityRelation: FunctionReference<"mutation", "public">;
-    getRelatedEntities: FunctionReference<"query", "public">;
+    store?: FunctionReference<"mutation", "public" | "internal">;
+    retrieve?: FunctionReference<"query", "public" | "internal">;
+    getByKey?: FunctionReference<"query", "public" | "internal">;
+    getRelevantContext?: FunctionReference<"query", "public" | "internal">;
+    storeInteraction?: FunctionReference<"mutation", "public" | "internal">;
+    storeEntityRelation?: FunctionReference<"mutation", "public" | "internal">;
+    getRelatedEntities?: FunctionReference<"query", "public" | "internal">;
   };
 };

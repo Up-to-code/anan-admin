@@ -44,20 +44,43 @@ export function detectPreferredLanguage(text: string | undefined): PreferredLang
 
 export function isLikelyLanguageMismatch(
   text: string | undefined,
-  preferredLanguage: PreferredLanguage
+  preferredLanguage: PreferredLanguage,
 ): boolean {
   const value = (text ?? "").trim();
   if (!value) return false;
 
-  const hasArabic = hasArabicChars(value);
-  const hasLatin = hasLatinChars(value);
-  if (preferredLanguage === "ar") return !hasArabic && hasLatin;
-  return !hasLatin && hasArabic;
+  const clean = value
+    .replace(/!\[.*?\]\(.*?\)/g, "")
+    .replace(/https?:\/\/[^\s]+/g, "")
+    .replace(/[0-9\s.,!?;:()"'*_\-–—]/g, "");
+
+  const arabicCount = countArabicChars(clean);
+  const latinCount = countLatinChars(clean);
+
+  if (preferredLanguage === "ar") {
+    // If user prefers Arabic, but reply is predominantly Latin (> 3x more latin than arabic)
+    if (latinCount > 10 && latinCount > arabicCount * 3) return true;
+    return arabicCount === 0 && latinCount > 5;
+  }
+  // If user prefers English, but reply contains ANY Arabic
+  return arabicCount > 0;
 }
 
 export function languageGuardFallback(preferredLanguage: PreferredLanguage): string {
   if (preferredLanguage === "ar") {
-    return "أبشر، بحثت لك عن أفضل الخيارات المتاحة الآن. إذا تبي، أقدر أعرض لك تفاصيل أكثر حسب ميزانيتك والموقع.";
+    return `أبشر، بحثت لك هذه الخيارات. (Answer)
+
+- البدائل متاحة حسب ميزانيتك وفي أحياء مختلفة.
+- يمكننا حفظ هذه القائمة لك للمتابعة لاحقاً.
+- أنا جاهز لمساعدتك بمجرد أن تكون مستعداً للمعاينة. (Details)
+
+ما الخطوة التالية التي تفضل أن أبدأ بها؟ (Next Step)`;
   }
-  return "Sure, I searched for the best available options for you. If you want, I can refine results by your budget and location.";
+  return `Happy to help! I've found these options for you. (Answer)
+
+- We can look for more alternatives based on your budget and preferred neighborhood.
+- If you're not ready now, we can save these and follow up later.
+- I'm here when you're ready for a viewing or want to proceed with a purchase! (Details)
+
+What would you like to do next? (Next Step)`;
 }

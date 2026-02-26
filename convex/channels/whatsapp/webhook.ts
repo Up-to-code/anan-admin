@@ -1,247 +1,144 @@
 /**
  * WhatsApp webhook handler.
- * Verify signature, parse payload, process messages (OTP, agent, send).
+ * Uses canonical parser/verification from channels/whatsapp/api.
  */
 
-import type { DataModel } from "../../_generated/dataModel";
-import type { GenericActionCtx } from "convex/server";
 import { api, internal } from "../../_generated/api";
-import { isOtpLike } from "../../lib/phone";
 import type { OfferBlock } from "../formatters";
+import { isOtpLike } from "../../lib/phone";
+import { extractAllWebhookEvents, verifyWhatsAppSignature } from "./api";
 import { WhatsAppService } from "./service";
+import { processVoiceNote } from "./flow/voice_note_handler";
+import {
+  AGENT_FALLBACK_MESSAGE_AR,
+  MAX_NORMAL_MESSAGES_PER_TURN,
+  NORMAL_SEARCH_MAX_OFFERS,
+  VOICE_FALLBACK_MESSAGE_AR,
+  WA_SILENT_RETRY_MAX_ATTEMPTS,
+  WA_SILENT_RETRY_MAX_BUDGET_MS,
+  type SuggestedAction,
+  type WhatsAppResponseMode,
+} from "./constants";
+import {
+  buildContextAwareCta,
+  enforceWhatsAppMessageContract,
+  parseQuickReplyIntent,
+  parseVoiceConfirmationDecision,
+} from "./flow/intent_normalization";
+import {
+  buildSinglePropertyDetailQueue,
+  buildWhatsAppOfferSendQueue,
+  ensureOfferQueueHasImageFallback,
+  normalizeWhatsAppImageUrls,
+  normalizeWhatsAppOfferBlocks,
+  type WhatsAppOfferQueueItem,
+} from "./flow/send_policy";
+import { sendQueue } from "./flow/send_executor";
+import {
+  insertInboundMessage,
+  markEventKey,
+  markInboundDone,
+  markInboundFailed,
+  markInboundProcessing,
+  type Ctx,
+} from "./flow/inbound_dedup";
+import {
+  createDefaultVoiceState,
+  getPendingVoiceConfirmation,
+  resolvePendingVoiceConfirmation,
+  type VoiceConfirmationState,
+} from "./flow/voice_confirmation";
+import { logDeliveryTurnSafe } from "./flow/delivery_metrics";
 
-type Ctx = GenericActionCtx<DataModel>;
-const WHATSAPP_SEND_GAP_MS = 200;
+export {
+  normalizeWhatsAppImageUrls,
+  normalizeWhatsAppOfferBlocks,
+  buildWhatsAppOfferSendQueue,
+  buildSinglePropertyDetailQueue,
+  ensureOfferQueueHasImageFallback,
+  parseQuickReplyIntent,
+  parseVoiceConfirmationDecision,
+};
 
-// --- Verify signature (see channels/whatsapp/api.ts for full implementation) ---
-async function verifySignature(payload: string, signature: string, secret?: string): Promise<boolean> {
-  if (!signature.startsWith("sha256=")) return false;
-  const appSecret = secret ?? process.env.WHATSAPP_APP_SECRET;
-  if (!appSecret) return false;
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(appSecret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(payload));
-  const actual = "sha256=" + Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
-  return actual === signature;
-}
-
-// --- Parse webhook payload (see channels/whatsapp/api.ts for full implementation) ---
-interface ParsedMessage {
-  from: string;
-  messageId?: string;
+type AgentReply = {
   text: string;
-  phoneNumberId?: string;
-  displayName?: string;
-}
-
-interface ParsedReaction {
-  from: string;
-  messageId?: string;
-  reactionMessageId: string;
-  emoji?: string;
-  phoneNumberId?: string;
-}
-
-export function normalizeWhatsAppImageUrls(
-  imageUrl?: string,
-  imageUrls?: string[],
-  maxImages = 5
-): string[] {
-  return Array.from(
-    new Set(
-      (Array.isArray(imageUrls) && imageUrls.length > 0
-        ? imageUrls
-        : imageUrl
-          ? [imageUrl]
-          : []
-      ).filter((url): url is string => Boolean(url))
-    )
-  ).slice(0, maxImages);
-}
-
-export function normalizeWhatsAppOfferBlocks(
-  offerBlocks?: OfferBlock[],
-  maxOffers = 5
-): OfferBlock[] {
-  if (!Array.isArray(offerBlocks) || offerBlocks.length === 0) return [];
-  return offerBlocks
-    .map((block) => ({
-      text: (block.text ?? "").trim(),
-      imageUrl: block.imageUrl?.trim() || undefined,
-      imageUrls: Array.from(
-        new Set(
-          [
-            block.imageUrl?.trim() ?? "",
-            ...((block.imageUrls ?? []).map((url) => String(url ?? "").trim())),
-          ].filter(Boolean)
-        )
-      ).slice(0, 5),
-    }))
-    .filter((block) => block.text.length > 0)
-    .slice(0, maxOffers);
-}
-
-/** Rule 1: Per property, send all images first, then one contact (details + link) message. */
-export type WhatsAppOfferQueueItem =
-  | { type: "image"; imageUrl: string }
-  | { type: "image_with_caption"; text: string; imageUrl: string; extraImageUrls?: string[] }
-  | { type: "text"; text: string };
-
-const MAX_OFFERS_PER_TURN = 5;
-const MAX_IMAGES_PER_OFFER = 5;
+  imageUrl?: string;
+  imageUrls?: string[];
+  offerBlocks?: OfferBlock[];
+  responseMode?: WhatsAppResponseMode;
+  suggestedActions?: SuggestedAction[];
+  threadId: string;
+};
 
 function buildCompactOfferCta(text: string): string {
   const isArabic = /[\u0600-\u06FF]/.test(text);
   return isArabic
-    ? "إذا مناسب لك هذا العرض، اكتب: مهتم وأرتب لك الخطوة التالية."
-    : "If this option fits you, reply with interested and I will arrange the next step.";
+    ? "إذا مناسب لك هذا العرض، اكتب: مهتم."
+    : "If this fits, reply: interested.";
 }
 
-/** Build queue: per offer use first image+caption, then extra images, then optional compact text CTA. */
-export function buildWhatsAppOfferSendQueue(
-  offerBlocks?: OfferBlock[],
-  maxOffers = MAX_OFFERS_PER_TURN
-): WhatsAppOfferQueueItem[] {
-  const normalized = normalizeWhatsAppOfferBlocks(offerBlocks, maxOffers);
-  const queue: WhatsAppOfferQueueItem[] = [];
-  for (const block of normalized) {
-    const imageUrls = Array.from(
-      new Set([
-        block.imageUrl ?? "",
-        ...(block.imageUrls ?? []),
-      ].filter(Boolean))
-    ).slice(0, MAX_IMAGES_PER_OFFER);
-    if (imageUrls.length > 0) {
-      const [firstImage, ...extraImages] = imageUrls;
-      queue.push({
-        type: "image_with_caption",
-        text: block.text,
-        imageUrl: firstImage,
-        extraImageUrls: extraImages,
+function baseTurnMetrics(
+  userId: string,
+  sourceMessageId: string | undefined,
+  voiceState: VoiceConfirmationState,
+) {
+  return {
+    userId,
+    sourceMessageId,
+    transcriptionStatus: voiceState.transcriptionStatus,
+    transcriptionLatencyMs: voiceState.transcriptionLatencyMs,
+    voiceConfirmationShown: voiceState.voiceConfirmationShown,
+    voiceConfirmed: voiceState.voiceConfirmed,
+    voiceCorrectionApplied: voiceState.voiceCorrectionApplied,
+    voiceIntentConfidence: voiceState.voiceIntentConfidence,
+  };
+}
+
+async function logGeneralInfoTurn(
+  ctx: Ctx,
+  userId: string,
+  sourceMessageId: string | undefined,
+  voiceState: VoiceConfirmationState,
+  args?: { failures?: number; silentRetryAttempts?: number; messagesSent?: number },
+): Promise<void> {
+  await logDeliveryTurnSafe(ctx, {
+    ...baseTurnMetrics(userId, sourceMessageId, voiceState),
+    sendPolicyUsed: "general_info",
+    responseMode: "general_info",
+    messagesSentPerTurn: args?.messagesSent ?? 1,
+    offersSentPerTurn: 0,
+    imagesSentPerTurn: 0,
+    retryCount: 0,
+    deliveryFailures: args?.failures ?? 0,
+    silentRetryAttempts: args?.silentRetryAttempts ?? 0,
+  });
+}
+
+async function generateReplyWithSilentRetry(
+  ctx: Ctx,
+  args: { userId: string; message: string },
+): Promise<{ reply?: AgentReply; attempts: number; lastError?: unknown }> {
+  const startedAt = Date.now();
+  let attempts = 0;
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= WA_SILENT_RETRY_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const reply = await ctx.runAction(internal.agents.actions.generateReplyAndReturnText, {
+        userId: args.userId,
+        message: args.message,
+        channel: "whatsapp",
       });
-      queue.push({ type: "text", text: buildCompactOfferCta(block.text) });
-      continue;
-    }
-    queue.push({ type: "text", text: block.text });
-  }
-  return queue;
-}
-
-export function ensureOfferQueueHasImageFallback(
-  queue: WhatsAppOfferQueueItem[],
-  imageUrls?: string[]
-): WhatsAppOfferQueueItem[] {
-  if (!Array.isArray(queue) || queue.length === 0) return [];
-  const hasAnyImage = queue.some(
-    (item) => item.type === "image" || item.type === "image_with_caption"
-  );
-  if (hasAnyImage) return queue;
-  const firstFallbackImage = (imageUrls ?? []).find(Boolean);
-  if (!firstFallbackImage) return queue;
-
-  const firstTextIndex = queue.findIndex((item) => item.type === "text");
-  if (firstTextIndex < 0) return queue;
-
-  const updated = [...queue];
-  const firstTextItem = updated[firstTextIndex] as { type: "text"; text: string };
-  updated[firstTextIndex] = {
-    type: "image_with_caption",
-    text: firstTextItem.text,
-    imageUrl: firstFallbackImage,
-    extraImageUrls: (imageUrls ?? []).filter((url) => url !== firstFallbackImage).slice(0, 4),
-  };
-  return updated;
-}
-
-function extractAllWebhookEvents(body: string): {
-  messages: ParsedMessage[];
-  reactions: ParsedReaction[];
-} {
-  const data = JSON.parse(body) as {
-    entry?: Array<{
-      changes?: Array<{
-        value?: {
-          metadata?: { phone_number_id?: string };
-          contacts?: Array<{ profile?: { name?: string } }>;
-          messages?: Array<{
-            from: string;
-            id?: string;
-            type?: string;
-            text?: { body: string };
-            image?: { caption?: string };
-            video?: { caption?: string };
-            document?: { filename?: string };
-            reaction?: { message_id: string; emoji?: string };
-          }>;
-        };
-      }>;
-    }>;
-  };
-
-  const messages: ParsedMessage[] = [];
-  const reactions: ParsedReaction[] = [];
-
-  for (const entry of data.entry ?? []) {
-    for (const change of entry.changes ?? []) {
-      const value = change.value;
-      if (!value?.messages) continue;
-
-      const metadata = value.metadata ?? {};
-      const contact = value.contacts?.[0];
-      const phoneNumberId = metadata.phone_number_id ?? "";
-      const displayName = contact?.profile?.name ?? "";
-      const base = { phoneNumberId, displayName };
-
-      for (const msg of value.messages) {
-        if (msg.type === "reaction" && msg.reaction) {
-          reactions.push({
-            from: msg.from,
-            messageId: msg.id,
-            reactionMessageId: msg.reaction.message_id,
-            emoji: msg.reaction.emoji,
-            ...base,
-          });
-          continue;
-        }
-
-        const msgBase = { from: msg.from, messageId: msg.id, ...base };
-        if (msg.text?.body) {
-          messages.push({ ...msgBase, text: msg.text.body });
-          continue;
-        }
-        if (msg.image) {
-          const caption = msg.image.caption ?? "";
-          messages.push({
-            ...msgBase,
-            text: caption ? `[User sent an image. Caption: ${caption}]` : "User sent an image. Ask them to describe it if you need details.",
-          });
-          continue;
-        }
-        if (msg.video) {
-          const caption = msg.video.caption ?? "";
-          messages.push({
-            ...msgBase,
-            text: caption ? `[User sent a video. Caption: ${caption}]` : "User sent a video message. Ask them to type the key points if you need details.",
-          });
-          continue;
-        }
-        if (msg.document) {
-          const fn = msg.document.filename ?? "document";
-          messages.push({ ...msgBase, text: `User sent a document (${fn}). Ask them to paste relevant text if you need to analyze it.` });
-        }
-      }
+      return { reply: reply as AgentReply, attempts };
+    } catch (error) {
+      lastError = error;
+      if (attempt >= WA_SILENT_RETRY_MAX_ATTEMPTS) break;
+      if (Date.now() - startedAt > WA_SILENT_RETRY_MAX_BUDGET_MS) break;
+      attempts += 1;
+      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
     }
   }
-  return { messages, reactions };
+  return { attempts, lastError };
 }
-
-// --- Handlers ---
 
 /** GET /api/webhook/whatsapp - Meta verification */
 export async function handleWhatsAppWebhookGet(_ctx: Ctx, request: Request): Promise<Response> {
@@ -257,114 +154,332 @@ export async function handleWhatsAppWebhookGet(_ctx: Ctx, request: Request): Pro
 
 /** POST /api/webhook/whatsapp - Incoming messages */
 export async function handleWhatsAppWebhookPost(ctx: Ctx, request: Request): Promise<Response> {
-  const body = await request.text();
-  const sig = request.headers.get("x-hub-signature-256") ?? "";
+  const bodyBytes = await request.arrayBuffer();
+  const body = new TextDecoder().decode(bodyBytes);
+  const signature = request.headers.get("x-hub-signature-256") ?? "";
   const secret = process.env.WHATSAPP_APP_SECRET;
   const skipVerification = process.env.WHATSAPP_SKIP_VERIFICATION === "true";
-
   if (secret && !skipVerification) {
-    const valid = await verifySignature(body, sig, secret);
-    if (!valid) return new Response("Invalid signature", { status: 401 });
+    const valid = await verifyWhatsAppSignature(bodyBytes, signature, secret);
+    if (!valid) {
+      console.warn("[WhatsApp] signature verification failed", {
+        hasSignature: signature.length > 0,
+        hasSecret: Boolean(secret),
+        bodyLength: bodyBytes.byteLength,
+      });
+      return new Response("Invalid signature", { status: 401 });
+    }
   }
 
   const { messages: events, reactions } = extractAllWebhookEvents(body);
   const phoneNumberId =
-    process.env.WHATSAPP_PHONE_NUMBER_ID ?? events[0]?.phoneNumberId ?? reactions[0]?.phoneNumberId ?? "";
+    process.env.WHATSAPP_PHONE_NUMBER_ID ??
+    events[0]?.phoneNumberId ??
+    reactions[0]?.phoneNumberId ??
+    "";
+  if (events.length === 0 && reactions.length === 0) {
+    console.warn("[WhatsApp] webhook body had no processable messages or reactions", {
+      bodyPreview: body.slice(0, 200),
+    });
+  }
+  if (!phoneNumberId) {
+    console.warn("[WhatsApp] phoneNumberId missing", {
+      fromEnv: Boolean(process.env.WHATSAPP_PHONE_NUMBER_ID),
+      eventsCount: events.length,
+      reactionsCount: reactions.length,
+    });
+  }
   const wa = new WhatsAppService(phoneNumberId);
+  const engagementV2Enabled = process.env.WA_ENGAGEMENT_V2_ENABLED !== "false";
+  const voiceConfirmationEnabled = process.env.WA_VOICE_CONFIRMATION_ENABLED !== "false";
+  const quickReplyIntentsEnabled = process.env.WA_QUICK_REPLY_INTENTS_ENABLED !== "false";
 
   for (const reaction of reactions) {
-    const pid = reaction.phoneNumberId || phoneNumberId;
-    if (pid && reaction.messageId) {
-      await wa.markRead(reaction.messageId);
+    const providerEventId = markEventKey({
+      type: "reaction",
+      id: reaction.messageId ?? reaction.reactionMessageId,
+      fallback: `${reaction.from}:${reaction.reactionMessageId}`,
+    });
+    const accepted = await markInboundProcessing(ctx, {
+      providerEventId,
+      userId: reaction.from,
+      eventType: "reaction",
+      messageId: reaction.messageId,
+    });
+    if (!accepted) continue;
+    try {
+      if (reaction.phoneNumberId && reaction.messageId) {
+        await wa.markRead(reaction.messageId);
+      }
+      await markInboundDone(ctx, providerEventId);
+    } catch (error) {
+      await markInboundFailed(
+        ctx,
+        providerEventId,
+        error instanceof Error ? error.message : "reaction handling failed",
+      );
     }
   }
 
   for (const event of events) {
+    const providerEventId = markEventKey({
+      type: "message",
+      id: event.messageId,
+      fallback: `${event.from}:${event.text.slice(0, 40)}`,
+    });
+    const accepted = await markInboundProcessing(ctx, {
+      providerEventId,
+      userId: event.from,
+      eventType: "message",
+      messageId: event.messageId,
+    });
+    if (!accepted) continue;
+
     const pid = event.phoneNumberId || phoneNumberId;
     const userId = event.from;
+    const voiceState = createDefaultVoiceState();
 
-    if (pid && event.messageId) {
-      await wa.markRead(event.messageId);
-    }
+    try {
+      if (pid && event.messageId) {
+        await wa.markRead(event.messageId);
+      }
 
-    const messageText = event.text.trim();
-    if (isOtpLike(messageText)) {
-      const otpResult = await ctx.runMutation(internal.features.auth.actions.completeVerification, {
-        phoneNumber: userId,
-        otp: messageText,
+      const rawInputText = event.text.trim();
+      if (isOtpLike(rawInputText)) {
+        const otpResult = await ctx.runMutation(internal.features.auth.actions.completeVerification, {
+          phoneNumber: userId,
+          otp: rawInputText,
+        });
+        if (otpResult.success) {
+          if (pid) await wa.sendText(userId, "تم التحقق بنجاح. يمكنك العودة للتطبيق.", event.messageId);
+          await markInboundDone(ctx, providerEventId);
+          continue;
+        }
+        if (pid) {
+          const otpErrorText =
+            otpResult.error === "EXPIRED"
+              ? "انتهت صلاحية رمز التحقق. اطلب رمز جديد."
+              : "رمز التحقق غير صحيح. حاول مرة ثانية.";
+          await wa.sendText(userId, otpErrorText, event.messageId);
+        }
+        await markInboundDone(ctx, providerEventId);
+        continue;
+      }
+
+      if (pid && event.messageId) {
+        await wa.sendTyping(event.messageId);
+      }
+
+      await ctx.runMutation(api.services.users.ensureWhatsAppUser, {
+        userId,
+        displayName: event.displayName,
       });
 
-      if (otpResult.success) {
-        const successMsg = "تم التحقق بنجاح. يمكنك العودة للتطبيق وإنشاء جلسة جديدة.";
-        if (pid) await wa.sendText(userId, successMsg, event.messageId);
-        continue;
+      let userMessage = rawInputText;
+      if (event.mediaType === "audio" && event.mediaId) {
+        try {
+          const voiceResult = await processVoiceNote({
+            ctx,
+            wa,
+            userId,
+            mediaId: event.mediaId,
+            messageId: event.messageId,
+            pid,
+            voiceState,
+            voiceConfirmationEnabled,
+          });
+          if (voiceResult.handled) {
+            await insertInboundMessage(ctx, {
+              userId,
+              providerEventId,
+              messageId: event.messageId,
+              text: voiceResult.textForStorage,
+              mediaType: "audio",
+              mediaId: event.mediaId,
+              phoneNumberId: pid,
+            });
+            await markInboundDone(ctx, providerEventId);
+            continue;
+          }
+          userMessage = voiceResult.userMessage;
+        } catch (voiceError) {
+          const reason =
+            voiceError instanceof Error ? voiceError.message : "voice handling threw";
+          console.warn("[WhatsApp] Voice note handling failed", {
+            userId,
+            mediaId: event.mediaId,
+            reason: reason.slice(0, 80),
+          });
+          await insertInboundMessage(ctx, {
+            userId,
+            providerEventId,
+            messageId: event.messageId,
+            text: "[Voice transcription failed]",
+            mediaType: "audio",
+            mediaId: event.mediaId,
+            phoneNumberId: pid,
+          });
+          if (pid) {
+            await wa.sendText(userId, VOICE_FALLBACK_MESSAGE_AR, event.messageId);
+          }
+          await markInboundDone(ctx, providerEventId);
+          continue;
+        }
       }
-      if (otpResult.error === "INVALID_OTP") {
-        if (pid) await wa.sendText(userId, "رمز التحقق غير صحيح. يرجى المحاولة مرة أخرى.", event.messageId);
-        continue;
-      }
-      if (otpResult.error === "EXPIRED") {
-        if (pid) await wa.sendText(userId, "انتهت صلاحية رمز التحقق. يرجى طلب رمز جديد.", event.messageId);
-        continue;
-      }
-    }
 
-    const apiAny = api as any;
-    await ctx.runMutation(apiAny.services.users.ensureWhatsAppUser, {
-      userId,
-      displayName: event.displayName,
-    });
+      await insertInboundMessage(ctx, {
+        userId,
+        providerEventId,
+        messageId: event.messageId,
+        text: userMessage,
+        mediaType: (event.mediaType ?? "text") as "text" | "audio" | "image" | "video" | "document",
+        mediaId: event.mediaId,
+        phoneNumberId: pid,
+      });
 
-    if (pid && event.messageId) {
-      await wa.sendTyping(event.messageId);
-    }
-
-    const internalAny = internal as any;
-    const { text: replyText, imageUrl, imageUrls, offerBlocks } = await ctx.runAction(
-      internalAny.agents.actions.generateReplyAndReturnText,
-      { userId, message: event.text, channel: "whatsapp" }
-    );
-
-    if (pid) {
-      const normalizedImageUrls = normalizeWhatsAppImageUrls(imageUrl, imageUrls, 5);
-      const offerQueue = ensureOfferQueueHasImageFallback(
-        buildWhatsAppOfferSendQueue(offerBlocks, 5),
-        normalizedImageUrls
-      );
-      if (offerQueue.length > 0) {
-        for (let idx = 0; idx < offerQueue.length; idx += 1) {
-          const item = offerQueue[idx];
-          const replyTo = idx === 0 ? event.messageId : undefined;
-          if (item.type === "image") {
-            await wa.sendImage(userId, item.imageUrl, undefined, replyTo);
-          } else if (item.type === "image_with_caption") {
-            await wa.sendTextWithImage(userId, item.text, item.imageUrl, replyTo);
-            for (const extraImage of item.extraImageUrls ?? []) {
-              await wa.sendImage(userId, extraImage, undefined, event.messageId);
+      if (voiceConfirmationEnabled) {
+        const pendingVoice = await getPendingVoiceConfirmation(ctx, userId);
+        if (pendingVoice) {
+          const decision = parseVoiceConfirmationDecision(userMessage);
+          if (decision.decision === "confirm") {
+            voiceState.voiceConfirmed = true;
+            userMessage = pendingVoice.transcriptText;
+            await resolvePendingVoiceConfirmation(ctx, {
+              id: pendingVoice._id,
+              resolution: "confirmed",
+            });
+          } else if (decision.decision === "correct") {
+            voiceState.voiceCorrectionApplied = true;
+            const correctedText = decision.correctedText?.trim() || "";
+            if (!correctedText) {
+              if (pid) {
+                await wa.sendText(
+                  userId,
+                  "تمام، اكتب التعديل بجملة قصيرة (مثال: أبي شقة غرفتين في جدة بحدود 900 ألف).",
+                  event.messageId,
+                );
+              }
+              await logGeneralInfoTurn(ctx, userId, event.messageId, voiceState);
+              await markInboundDone(ctx, providerEventId);
+              continue;
             }
+            await resolvePendingVoiceConfirmation(ctx, {
+              id: pendingVoice._id,
+              resolution: "corrected",
+              correctedText,
+            });
+            userMessage = correctedText;
           } else {
-            await wa.sendText(userId, item.text, replyTo);
-          }
-          if (idx < offerQueue.length - 1) {
-            await new Promise((resolve) => setTimeout(resolve, WHATSAPP_SEND_GAP_MS));
+            if (pid) {
+              await wa.sendText(userId, "قبل ما أكمل: اكتب (نعم، كمل) أو (تعديل: ...).", event.messageId);
+            }
+            voiceState.voiceConfirmationShown = true;
+            await logGeneralInfoTurn(ctx, userId, event.messageId, voiceState);
+            await markInboundDone(ctx, providerEventId);
+            continue;
           }
         }
+      }
+
+      if (quickReplyIntentsEnabled) {
+        userMessage = parseQuickReplyIntent(userMessage).normalizedMessage;
+      }
+
+      const generated = await generateReplyWithSilentRetry(ctx, {
+        userId,
+        message: userMessage,
+      });
+      if (!generated.reply) {
+        if (pid) {
+          await wa.sendText(userId, AGENT_FALLBACK_MESSAGE_AR, event.messageId);
+        }
+        await logGeneralInfoTurn(ctx, userId, event.messageId, voiceState, {
+          failures: 1,
+          silentRetryAttempts: generated.attempts,
+        });
+        await markInboundFailed(
+          ctx,
+          providerEventId,
+          generated.lastError instanceof Error ? generated.lastError.message : "agent reply failed",
+        );
         continue;
       }
 
-      if (normalizedImageUrls.length > 0) {
-        const [firstImage, ...remainingImages] = normalizedImageUrls;
-        if (replyText) {
-          await wa.sendTextWithImage(userId, replyText, firstImage, event.messageId);
-        } else {
-          await wa.sendImage(userId, firstImage, undefined, event.messageId);
-        }
-        for (const extraImage of remainingImages) {
-          await wa.sendImage(userId, extraImage);
-        }
-      } else if (replyText) {
-        await wa.sendText(userId, replyText, event.messageId);
+      const reply = generated.reply;
+      const normalizedImageUrls = normalizeWhatsAppImageUrls(reply.imageUrl, reply.imageUrls, 8);
+      const responseMode = reply.responseMode ?? "general_info";
+      const sendPolicyUsed =
+        responseMode === "single_property_detail"
+          ? "single_property_detail"
+          : responseMode === "search_list"
+            ? "normal_search"
+            : "general_info";
+
+      let queue: WhatsAppOfferQueueItem[] = [];
+      if (responseMode === "single_property_detail" && reply.offerBlocks?.[0]) {
+        const ctaText = engagementV2Enabled
+          ? buildContextAwareCta({
+              text: reply.offerBlocks[0].text,
+              responseMode,
+              suggestedActions: reply.suggestedActions,
+            })
+          : buildCompactOfferCta(reply.offerBlocks[0].text);
+        queue = buildSinglePropertyDetailQueue(reply.offerBlocks[0], { ctaText });
+      } else if (responseMode === "search_list") {
+        const coreQueue = buildWhatsAppOfferSendQueue(reply.offerBlocks, NORMAL_SEARCH_MAX_OFFERS, {
+          responseMode: engagementV2Enabled ? responseMode : "search_list",
+          suggestedActions: engagementV2Enabled ? reply.suggestedActions : undefined,
+        });
+        queue = ensureOfferQueueHasImageFallback(coreQueue, normalizedImageUrls).slice(
+          0,
+          MAX_NORMAL_MESSAGES_PER_TURN,
+        );
+      } else if (reply.text) {
+        queue = [
+          {
+            type: "text",
+            text: engagementV2Enabled
+              ? enforceWhatsAppMessageContract(reply.text)
+              : reply.text,
+          },
+        ];
       }
+
+      const sent = pid
+        ? await sendQueue(wa, userId, event.messageId, queue)
+        : { sentMessages: 0, sentImages: 0, retryCount: 0, failures: 0 };
+
+      await logDeliveryTurnSafe(ctx, {
+        ...baseTurnMetrics(userId, event.messageId, voiceState),
+        threadId: reply.threadId,
+        sendPolicyUsed,
+        responseMode,
+        messagesSentPerTurn: sent.sentMessages,
+        offersSentPerTurn:
+          responseMode === "search_list"
+            ? Math.min(reply.offerBlocks?.length ?? 0, NORMAL_SEARCH_MAX_OFFERS)
+            : responseMode === "single_property_detail"
+              ? 1
+              : 0,
+        imagesSentPerTurn: sent.sentImages,
+        retryCount: sent.retryCount,
+        deliveryFailures: sent.failures,
+        silentRetryAttempts: generated.attempts,
+      });
+      await markInboundDone(ctx, providerEventId);
+    } catch (error) {
+      if (pid && wa) {
+        try {
+          await wa.sendText(userId, AGENT_FALLBACK_MESSAGE_AR, event.messageId);
+        } catch (_) {
+          /* best-effort fallback; ignore send failure */
+        }
+      }
+      await markInboundFailed(
+        ctx,
+        providerEventId,
+        error instanceof Error ? error.message : "webhook event failed",
+      );
     }
   }
 

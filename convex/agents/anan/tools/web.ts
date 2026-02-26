@@ -6,6 +6,8 @@ import { ActionCache } from "@convex-dev/action-cache";
 import { Stagehand } from "@browserbasehq/convex-stagehand";
 import { toonEncode } from "../../../lib/toon";
 import { z } from "zod";
+import { type GenericActionCtx } from "convex/server";
+import { type DataModel } from "../../../_generated/dataModel";
 import { components } from "../../../_generated/api";
 import { internal } from "../../../_generated/api";
 import { debugLog } from "../../debug";
@@ -29,10 +31,12 @@ function shapeRealEstateQuery(query: string): string {
   return shaped;
 }
 
+
+
 export function createWebTools(_appApi: AgentToolsApi) {
   const webSearch = createTool({
     description:
-      "Search the web for current information. Use when the user asks about market news, recent prices, trends, or anything that needs up-to-date web information. Returns a list of results with title, url, and snippet.",
+      "Search the web for current information. Use when the user asks about market news, recent prices, trends, or anything that needs up-to-date web information. Returns a list of results with title, url, and snippet. Use deep: true for broad or comprehensive questions.",
     args: z.object({
       query: z
         .string()
@@ -43,15 +47,26 @@ export function createWebTools(_appApi: AgentToolsApi) {
         .number()
         .optional()
         .default(5)
-        .describe("Max number of results (default 5)"),
+        .describe("Max number of results (default 5, use 10 for broad questions)"),
+      deep: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe("When true, runs 2 related queries and merges results for comprehensive answers"),
     }),
-    handler: async (ctx, { query, num }) => {
-      debugLog("tools.webSearch", "start", { query, num });
+    handler: async (ctx, { query, num, deep }) => {
+      const effectiveNum = deep ? Math.max(num, 10) : num;
+      debugLog("tools.webSearch", "start", { query, num: effectiveNum, deep });
       try {
-        const cached = await serperCache.fetch(ctx as any, { query, num });
-        if (!cached.ok) {
-          debugLog("tools.webSearch", "error", { error: cached.error });
-          return toonEncode({ error: cached.error });
+        const cached = await serperCache.fetch(ctx as any, {
+          query,
+          num: effectiveNum,
+          deep,
+        });
+        if (!cached?.ok) {
+          const err = cached?.error ?? "unknown";
+          debugLog("tools.webSearch", "error", { error: err });
+          return toonEncode({ error: err });
         }
         debugLog("tools.webSearch", "success", {
           query,
@@ -59,6 +74,12 @@ export function createWebTools(_appApi: AgentToolsApi) {
         });
         return toonEncode({
           results: cached.results,
+          searchPlan: {
+            deep,
+            queriesUsed: Array.isArray((cached as { queriesUsed?: unknown }).queriesUsed)
+              ? (cached as { queriesUsed: string[] }).queriesUsed
+              : [query],
+          },
           presentationGuidance: {
             avoidProviderNames: true,
             includeLinksOnlyOnUserRequest: true,
@@ -69,6 +90,7 @@ export function createWebTools(_appApi: AgentToolsApi) {
           query,
           error: e instanceof Error ? e.message : "unknown_error",
         });
+        console.error(`[tools.webSearch] webSearch failed for query: "${query}"`, e);
         return toonEncode({
           error: e instanceof Error ? e.message : "Web search request failed",
         });
@@ -78,7 +100,7 @@ export function createWebTools(_appApi: AgentToolsApi) {
 
   const searchRealEstateInfo = createTool({
     description:
-      "Search for real estate market info, mortgage rates, best neighborhoods, regulations, area guides. Use for rates, trends, neighborhoods, regulations. Do NOT use for property listings (use smartPropertySearch instead).",
+      "Search for real estate market info. Use for 'what's the market like in X', 'market trends', 'market conditions', mortgage rates, best neighborhoods, regulations, area guides. Do NOT use for property listings (use smartPropertySearch instead). Use deep: true for broad or comprehensive questions.",
     args: z.object({
       query: z
         .string()
@@ -89,19 +111,27 @@ export function createWebTools(_appApi: AgentToolsApi) {
         .number()
         .optional()
         .default(5)
-        .describe("Max number of results (default 5)"),
+        .describe("Max number of results (default 5, use 10 for broad questions)"),
+      deep: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe("When true, runs 2 related queries and merges results for comprehensive answers"),
     }),
-    handler: async (ctx, { query, num }) => {
-      debugLog("tools.searchRealEstateInfo", "start", { query, num });
+    handler: async (ctx, { query, num, deep }) => {
+      const effectiveNum = deep ? Math.max(num, 10) : num;
+      debugLog("tools.searchRealEstateInfo", "start", { query, num: effectiveNum, deep });
       const shapedQuery = shapeRealEstateQuery(query);
       try {
         const cached = await serperCache.fetch(ctx as any, {
           query: shapedQuery,
-          num,
+          num: effectiveNum,
+          deep,
         });
-        if (!cached.ok) {
-          debugLog("tools.searchRealEstateInfo", "error", { error: cached.error });
-          return toonEncode({ error: cached.error });
+        if (!cached?.ok) {
+          const err = cached?.error ?? "unknown";
+          debugLog("tools.searchRealEstateInfo", "error", { error: err });
+          return toonEncode({ error: err });
         }
         debugLog("tools.searchRealEstateInfo", "success", {
           query: shapedQuery,
@@ -109,6 +139,12 @@ export function createWebTools(_appApi: AgentToolsApi) {
         });
         return toonEncode({
           results: cached.results,
+          searchPlan: {
+            deep,
+            queriesUsed: Array.isArray((cached as { queriesUsed?: unknown }).queriesUsed)
+              ? (cached as { queriesUsed: string[] }).queriesUsed
+              : [shapedQuery],
+          },
           presentationGuidance: {
             avoidProviderNames: true,
             includeLinksOnlyOnUserRequest: true,
@@ -119,12 +155,15 @@ export function createWebTools(_appApi: AgentToolsApi) {
           query,
           error: e instanceof Error ? e.message : "unknown_error",
         });
+        console.error(`[tools.searchRealEstateInfo] Real estate search failed for query: "${query}" (shaped: "${shapedQuery}")`, e);
         return toonEncode({
           error: e instanceof Error ? e.message : "Real estate search failed",
         });
       }
     },
   });
+
+
 
   const browseAndExtract = createTool({
     description:
@@ -149,18 +188,36 @@ export function createWebTools(_appApi: AgentToolsApi) {
           url: args.url,
           instruction: args.instruction,
           schema: z.object({
-            summary: z.string().optional(),
-            findings: z
+            title: z.string().optional().describe("Page title"),
+            mainContent: z.string().optional().describe("Cleaned primary text content of the page"),
+            summary: z.string().optional().describe("Brief summary of the page matching the instruction"),
+            structuredData: z
               .array(
                 z.object({
-                  title: z.string().optional(),
-                  value: z.string().optional(),
-                  details: z.string().optional(),
-                  url: z.string().optional(),
+                  key: z.string(),
+                  value: z.string(),
                 })
               )
-              .optional(),
-            links: z.array(z.string()).optional(),
+              .optional()
+              .describe("Any key-value pairs or tables found, e.g. property stats, specs"),
+            images: z
+              .array(
+                z.object({
+                  src: z.string(),
+                  alt: z.string().optional(),
+                })
+              )
+              .optional()
+              .describe("Important images on the page"),
+            links: z
+              .array(
+                z.object({
+                  text: z.string(),
+                  href: z.string(),
+                })
+              )
+              .optional()
+              .describe("Relevant links on the page"),
           }),
         });
         return toonEncode({
@@ -173,6 +230,7 @@ export function createWebTools(_appApi: AgentToolsApi) {
           },
         });
       } catch (e) {
+        console.error(`[tools.browseAndExtract] Stagehand extraction failed for url: "${args.url}" with instruction: "${args.instruction}"`, e);
         return toonEncode({
           error:
             e instanceof Error
@@ -183,5 +241,44 @@ export function createWebTools(_appApi: AgentToolsApi) {
     },
   });
 
-  return { webSearch, searchRealEstateInfo, browseAndExtract };
+  const fetchPageContent = createTool({
+    description: "Lightweight tool to fetch raw text content of a URL without opening a browser. Use when you only need the text of an article, docs, or page (like Aqar.fm) and Stagehand browser is overkill.",
+    args: z.object({
+      url: z.string().url().describe("URL to fetch"),
+      maxChars: z.number().optional().describe("Maximum characters to return (default 4000)"),
+    }),
+    handler: async (_ctx, { url, maxChars = 4000 }) => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          return toonEncode({ error: `Fetch failed: ${res.status} ${res.statusText}` });
+        }
+        const html = await res.text();
+        const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+        let text = bodyMatch ? bodyMatch[1] : html;
+        text = text
+          .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, " ")
+          .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, " ")
+          .replace(/<[^>]+>/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (text.length > maxChars) {
+          text = text.slice(0, maxChars) + "... (truncated)";
+        }
+        return toonEncode({ source: "fetch", url, content: text });
+      } catch (e) {
+        console.error(`[tools.fetchPageContent] Failed to fetch ${url}`, e);
+        return toonEncode({
+          error: e instanceof Error ? e.message : "Fetch failed",
+        });
+      }
+    },
+  });
+
+  return {
+    webSearch,
+    searchRealEstateInfo,
+    browseAndExtract,
+    fetchPageContent,
+  };
 }

@@ -5,6 +5,7 @@
 
 import type { FunctionReference } from "convex/server";
 import { SEARCH_CIRCUIT_BREAKER_MS } from "../../_lib/constants";
+import { isSearchOrchestratorEnabledForKey } from "../../runtime/env";
 import { buildTaskList, buildSearchTerms, runSerperSearch, selectTopSources } from "./serper";
 import { extractPropertyDetails } from "./stagehand";
 import {
@@ -14,6 +15,7 @@ import {
   buildUserResults,
 } from "./pipeline";
 import { SAUDI_PORTAL_CONFIGS, runPortalSearch, toSerperResult } from "./saudiPortals";
+import { runSearchOrchestrator } from "./searchOrchestrator";
 import type {
   KnowledgePayload,
   PropertyFinding,
@@ -21,6 +23,8 @@ import type {
   SerperResult,
   StagehandState,
 } from "./types";
+import { type GenericActionCtx } from "convex/server";
+import { type DataModel } from "../../../_generated/dataModel";
 
 export type { SearchAgentResult } from "./types";
 export { buildKnowledgePayloadFromDbResults } from "./pipeline";
@@ -31,12 +35,17 @@ export type SearchAgentApi = {
   };
 };
 
+function normalizeUrlKey(url: string | undefined): string | null {
+  if (!url) return null;
+  return url.trim().replace(/\/+$/, "").toLowerCase() || null;
+}
+
 
 /**
  * Fetch full property details (including Property Information and imageUrls) from a detail page URL.
  */
 export async function fetchPropertyDetailsByUrl(
-  ctx: unknown,
+  ctx: GenericActionCtx<DataModel>,
   propertyUrl: string
 ): Promise<{
   title?: string;
@@ -65,7 +74,7 @@ export async function fetchPropertyDetailsByUrl(
  * Store knowledge research record.
  */
 export async function storeKnowledgeResearch(
-  ctx: unknown,
+  ctx: GenericActionCtx<DataModel>,
   appApi: SearchAgentApi,
   payload: KnowledgePayload
 ): Promise<void> {
@@ -92,7 +101,7 @@ export async function storeKnowledgeResearch(
  * Main search agent entry point.
  */
 export async function runSearchAgent(
-  ctx: unknown,
+  ctx: GenericActionCtx<DataModel>,
   params: {
     query: string;
     userId: string;
@@ -101,6 +110,7 @@ export async function runSearchAgent(
     refreshToken?: string;
     offset?: number;
     threadId?: string;
+    excludedPropertyUrls?: string[];
   }
 ): Promise<SearchAgentResult> {
   const startTime = Date.now();
@@ -112,7 +122,14 @@ export async function runSearchAgent(
     refreshToken,
     offset = 0,
     threadId,
+    excludedPropertyUrls,
   } = params;
+  const excludedUrlKeys = new Set<string>(
+    (excludedPropertyUrls ?? [])
+      .map((url) => normalizeUrlKey(url))
+      .filter((url): url is string => Boolean(url)),
+  );
+  const routingKey = threadId ?? `${userId}:${query}`;
 
   console.log("[anan.search] start", {
     query,
@@ -121,17 +138,47 @@ export async function runSearchAgent(
     limit,
     refreshToken,
     offset,
+    excludedPropertyUrls: excludedUrlKeys.size,
   });
+
+  if (isSearchOrchestratorEnabledForKey(routingKey)) {
+    const orchestrated = await runSearchOrchestrator(ctx, {
+      query,
+      userId,
+      channel,
+      limit,
+      refreshToken,
+      offset,
+      threadId,
+      excludedPropertyUrls,
+    });
+    if (orchestrated.success) {
+      console.log("[anan.search] complete:orchestrated", {
+        duration: orchestrated.durationMs,
+        findingsCount: orchestrated.knowledgePayload.propertyFindings.length,
+        resultCount: orchestrated.userResults.length,
+        coverage: orchestrated.coverageReport?.score,
+      });
+      return orchestrated;
+    }
+    console.warn("[anan.search] orchestrator:fallback_to_legacy", {
+      error: orchestrated.error,
+      traceStages: orchestrated.orchestrationTrace?.length ?? 0,
+    });
+  }
 
   const baseTaskList = buildTaskList(query);
   const taskList =
-    offset > 0 ? [...baseTaskList, `Refresh mode enabled (offset=${offset})`] : baseTaskList;
+    offset > 0
+      ? [...baseTaskList, `Refresh mode enabled (offset=${offset})`]
+      : baseTaskList;
   const searchTerms = buildSearchTerms(query, refreshToken, offset);
   const deadlineMs = startTime + SEARCH_CIRCUIT_BREAKER_MS;
 
-  const portalFindings: PropertyFinding[] = [];
+  let portalFindings: PropertyFinding[] = [];
   const portalSources: SerperResult[] = [];
   const portalState: StagehandState = { disabled: false };
+  let remainingPortalDetailEnrichment = 3;
 
   for (let idx = 0; idx < SAUDI_PORTAL_CONFIGS.length; idx++) {
     if (Date.now() > deadlineMs) break;
@@ -147,13 +194,29 @@ export async function runSearchAgent(
         idx + 1,
         config,
         portalState,
-        { deadlineMs }
+        {
+          deadlineMs,
+          detailEnrichCount: remainingPortalDetailEnrichment,
+          excludePropertyUrls: excludedUrlKeys,
+        }
+      );
+      const consumedDetailBudget = result.findings.filter(
+        (f) => f.detailFetched,
+      ).length;
+      remainingPortalDetailEnrichment = Math.max(
+        0,
+        remainingPortalDetailEnrichment - consumedDetailBudget,
       );
       if (result.findings.length > 0) {
-        const seen = new Set(portalFindings.map((f) => f.propertyUrl).filter(Boolean));
+        const seen = new Set(
+          portalFindings
+            .map((f) => normalizeUrlKey(f.propertyUrl))
+            .filter((url): url is string => Boolean(url)),
+        );
         for (const f of result.findings) {
-          if (f.propertyUrl && !seen.has(f.propertyUrl)) {
-            seen.add(f.propertyUrl);
+          const key = normalizeUrlKey(f.propertyUrl);
+          if (key && !seen.has(key)) {
+            seen.add(key);
             portalFindings.push(f);
           }
         }
@@ -197,11 +260,12 @@ export async function runSearchAgent(
   try {
     const serperResult = await runSerperSearch(query, limit * 2, offset);
 
-    if (!serperResult.ok) {
+    if (!serperResult?.ok) {
       const durationMs = Date.now() - startTime;
+      const errorMsg = serperResult?.error ?? "serper_request_failed";
       console.log("[anan.search] failed", {
         duration: durationMs,
-        error: serperResult.error,
+        error: errorMsg,
       });
 
       return {
@@ -214,11 +278,11 @@ export async function runSearchAgent(
           [],
           taskList,
           searchTerms,
-          serperResult.error,
+          errorMsg,
           threadId
         ),
         userResults: [],
-        error: serperResult.error,
+        error: errorMsg,
         durationMs,
       };
     }
@@ -256,13 +320,21 @@ export async function runSearchAgent(
 
     let findings = await buildFindings(ctx, sources, imagePool, {
       deadlineMs,
+      maxFindings: Math.max(limit * 2, 10),
+      detailEnrichCount: 3,
+      excludePropertyUrls: excludedUrlKeys,
     });
 
-    const seenUrls = new Set(portalFindings.map((f) => f.propertyUrl).filter(Boolean));
+    const seenUrls = new Set(
+      portalFindings
+        .map((f) => normalizeUrlKey(f.propertyUrl))
+        .filter((url): url is string => Boolean(url)),
+    );
     const allFindings = [...portalFindings];
     for (const f of findings) {
-      if (f.propertyUrl && !seenUrls.has(f.propertyUrl)) {
-        seenUrls.add(f.propertyUrl);
+      const key = normalizeUrlKey(f.propertyUrl);
+      if (key && !seenUrls.has(key)) {
+        seenUrls.add(key);
         allFindings.push(f);
       }
     }
@@ -273,7 +345,7 @@ export async function runSearchAgent(
 
     if (findings.length < 2 && Date.now() < deadlineMs) {
       const secondResult = await runSerperSearch(query, limit * 2, 10);
-      if (secondResult.ok && secondResult.results.length > 0) {
+      if (secondResult?.ok && secondResult.results.length > 0) {
         const existingUrls = new Set(sources.map((s) => s.externalUrl));
         const additionalSources = selectTopSources(
           secondResult.results,
@@ -283,12 +355,12 @@ export async function runSearchAgent(
           const secondImagePool = (secondResult.images ?? [])
             .map((i) => i.imageUrl)
             .filter((url): url is string => Boolean(url));
-          const moreFindings = await buildFindings(
-            ctx,
-            additionalSources,
-            secondImagePool,
-            { deadlineMs }
-          );
+          const moreFindings = await buildFindings(ctx, additionalSources, secondImagePool, {
+            deadlineMs,
+            maxFindings: Math.max(limit, 6),
+            detailEnrichCount: 3,
+            excludePropertyUrls: excludedUrlKeys,
+          });
           findings = [...findings, ...moreFindings];
           sources = [...sources, ...additionalSources];
           console.log("[anan.search] second_run", {

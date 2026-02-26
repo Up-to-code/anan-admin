@@ -10,6 +10,7 @@ import { notFoundError } from "../lib/errors";
 /** Get URL for stored image. Public. */
 export const getImageUrl = query({
   args: { storageId: v.id("_storage") },
+  returns: v.union(v.string(), v.null()),
   handler: async (ctx, { storageId }) => ctx.storage.getUrl(storageId),
 });
 

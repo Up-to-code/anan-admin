@@ -5,13 +5,12 @@
 import { mutation, query } from "../_generated/server";
 import { ConvexError, v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
-import { components } from "../_generated/api";
+import { api } from "../_generated/api";
 import {
   requireAuth,
   requireAdmin,
   isAdmin as checkIsAdmin,
 } from "../lib/auth";
-import { ROLE_ADMIN } from "../roles";
 
 export const addFirstAdmin = mutation({
   args: {},
@@ -24,15 +23,6 @@ export const addFirstAdmin = mutation({
       );
     }
     await ctx.db.insert("adminUsers", { userId });
-    const profile = await ctx.db
-      .query("userProfiles")
-      .withIndex("userId", (q) => q.eq("userId", userId))
-      .first();
-    if (profile) {
-      await ctx.db.patch(profile._id, { role: ROLE_ADMIN });
-    } else {
-      await ctx.db.insert("userProfiles", { userId, role: ROLE_ADMIN });
-    }
     return { ok: true };
   },
 });
@@ -99,7 +89,7 @@ export const conversationsListThreads = query({
   returns: v.any(),
   handler: async (ctx, args): Promise<unknown> => {
     await requireAdmin(ctx);
-    return ctx.runQuery(components.agent.threads.listThreadsByUserId, {
+    return ctx.runQuery(api.agents.actions.listThreads, {
       userId: args.userId,
       paginationOpts: args.paginationOpts,
     });
@@ -111,7 +101,7 @@ export const conversationsListUsersWithThreads = query({
   returns: v.any(),
   handler: async (ctx, args): Promise<unknown> => {
     await requireAdmin(ctx);
-    return ctx.runQuery(components.agent.users.listUsersWithThreads, {
+    return ctx.runQuery(api.agents.actions.listUsersWithThreads, {
       paginationOpts: args.paginationOpts,
     });
   },
@@ -125,10 +115,10 @@ export const conversationsGetThreadMessages = query({
   returns: v.any(),
   handler: async (ctx, args): Promise<unknown> => {
     await requireAdmin(ctx);
-    return ctx.runQuery(components.agent.messages.listMessagesByThreadId, {
+    return ctx.runQuery(api.agents.actions.getThreadMessages, {
       threadId: args.threadId,
       paginationOpts: args.paginationOpts,
-      order: "desc",
+      allowAdmin: true,
     });
   },
 });
@@ -139,13 +129,12 @@ export const conversationsGetThreadTraces = query({
     limit: v.optional(v.number()),
   },
   returns: v.any(),
-  handler: async (ctx, args): Promise<unknown> => {
+  handler: async (ctx, { threadId, limit = 20 }): Promise<unknown> => {
     await requireAdmin(ctx);
-    const limit = Math.min(Math.max(args.limit ?? 20, 1), 100);
-    return ctx.db
+    return await ctx.db
       .query("agentTraces")
-      .withIndex("threadId", (q) => q.eq("threadId", args.threadId))
+      .withIndex("threadId", (q) => q.eq("threadId", threadId))
       .order("desc")
-      .take(limit);
+      .take(Math.max(1, Math.min(limit, 100)));
   },
 });

@@ -307,4 +307,11 @@ Apartment Jeddah	2BR modern apt	https://example.com/2	https://images.aqar.fm/apt
       "https://img.example.com/gallery-3.jpg",
     ]);
   });
+
+  it("ensures whatsapp text ends with a single next-step question", () => {
+    const formatted = formatForChannel("هذه خيارات مناسبة لك", "whatsapp");
+    const lines = formatted.text.split("\n").filter(Boolean);
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines[lines.length - 1]).toMatch(/[؟?]$/);
+  });
 });

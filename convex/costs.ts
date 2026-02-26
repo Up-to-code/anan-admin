@@ -1,5 +1,10 @@
 /**
  * Cost tracking – wraps neutral-cost for AI and tool cost attribution.
+ *
+ * Token recording: All agent paths flow through the Agent usageHandler (createAnanAgent in
+ * agents/anan/agent.ts). Entry points: generateResponse (app/web via sendMessage),
+ * generateReplyAndReturnText (WhatsApp, HTTP). Both use getAgentByModel().generateText()
+ * which invokes the usageHandler → recordAgentUsage → insertAgentUsage + incrementUserTokensUsed.
  */
 import { components, internal } from "./_generated/api";
 import { CostComponent } from "neutral-cost";
@@ -60,6 +65,16 @@ export async function recordAgentUsage(
           cachedInputTokens: usage.cachedInputTokens,
           reasoningTokens: usage.reasoningTokens,
         });
+        if (userId && usage.totalTokens > 0) {
+          try {
+            await (ctx as any).runMutation(
+              internal.services.users.incrementUserTokensUsedInternal,
+              { userId, tokensToAdd: usage.totalTokens },
+            );
+          } catch (e) {
+            console.warn("[costs] incrementUserTokensUsed failed", e);
+          }
+        }
       } catch (e) {
         console.warn("[costs] insertAgentUsage failed", e);
       }

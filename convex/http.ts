@@ -1,4 +1,5 @@
 import { httpRouter } from "convex/server";
+import { ConvexError } from "convex/values";
 import { httpAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { authComponent, createAuth } from "./auth";
@@ -7,40 +8,15 @@ import {
   handleWhatsAppWebhookPost,
 } from "./channels/whatsapp/webhook";
 import { detectChannel } from "./channels/types";
+import {
+  getClientIp,
+  hashApiKey,
+  isTruthyEnv,
+  maybeRateLimitedResponse,
+} from "./lib/httpHelpers";
+import { enforceHttpRateLimit } from "./lib/rateLimiter";
 
 const http = httpRouter();
-const apiAny = api as any;
-const internalAny = internal as any;
-
-// Simple in-memory rate limiting for HTTP endpoints
-// Note: This resets on deployment. For production, consider using a distributed rate limiter.
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-
-function checkRateLimit(key: string, maxRequests: number, windowMs: number): { allowed: boolean; retryAfter?: number } {
-  const now = Date.now();
-  const entry = rateLimitMap.get(key);
-  
-  // Clean up expired entry
-  if (entry && now > entry.resetAt) {
-    rateLimitMap.delete(key);
-  }
-  
-  const currentEntry = rateLimitMap.get(key);
-  if (!currentEntry) {
-    rateLimitMap.set(key, { count: 1, resetAt: now + windowMs });
-    return { allowed: true };
-  }
-  
-  if (currentEntry.count >= maxRequests) {
-    return { allowed: false, retryAfter: Math.ceil((currentEntry.resetAt - now) / 1000) };
-  }
-  
-  currentEntry.count++;
-  return { allowed: true };
-}
-
-// Note: Rate limit entries are cleaned up lazily when checked.
-// For production, consider using Convex's built-in rate limiting or a scheduled function.
 
 /** Better Auth routes - must be registered first */
 authComponent.registerRoutes(http, createAuth, { cors: true });
@@ -104,7 +80,7 @@ http.route({
     }
 
     try {
-      const id = await ctx.runMutation(api.services.partners.addProperty, {
+      const args = {
         partnerId,
         title,
         address,
@@ -114,26 +90,33 @@ http.route({
         sqft: body.sqft != null ? Number(body.sqft) : undefined,
         description,
         body: body.body,
-      });
+      };
+      // @ts-ignore - Convex FunctionReference triggers excessively deep type instantiation
+      const id = await ctx.runMutation(api.services.partners.addProperty, args);
       return new Response(
         JSON.stringify({ id, status: "created" }),
         { status: 201, headers: { "Content-Type": "application/json" } }
       );
     } catch (e) {
+      console.error("[http.partner.properties] addProperty failed", e);
       return new Response(
-        JSON.stringify({ error: String(e) }),
+        JSON.stringify({ error: "Unable to create property" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
   }),
 });
 
-async function hashApiKey(apiKey: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(apiKey);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+function isAgentTestEndpointsEnabled(): boolean {
+  // Keep test routes disabled unless explicitly enabled in environment variables.
+  return isTruthyEnv(process.env.AGENT_TEST_HTTP_ENDPOINTS);
+}
+
+function internalErrorResponse(): Response {
+  return new Response(JSON.stringify({ error: "Internal server error" }), {
+    status: 500,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 /** Generic chat API: POST body { threadId?, message, userId? }
@@ -143,27 +126,22 @@ http.route({
   path: "/api/chat",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    // Rate limit by IP or user ID
-    const clientIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-    const rateLimitKey = `chat:${clientIp}`;
-    const rateLimit = checkRateLimit(rateLimitKey, 30, 60000); // 30 requests per minute
-    
-    if (!rateLimit.allowed) {
-      return new Response(
-        JSON.stringify({ 
-          error: "Rate limit exceeded", 
-          retryAfter: rateLimit.retryAfter 
-        }),
-        { 
-          status: 429, 
-          headers: { 
-            "Content-Type": "application/json",
-            "Retry-After": String(rateLimit.retryAfter)
-          } 
-        }
+    const clientIp = getClientIp(request);
+    try {
+      await enforceHttpRateLimit(ctx, {
+        limitName: "httpChatIngressPerIp",
+        key: `chat:${clientIp}`,
+      });
+    } catch (error) {
+      return (
+        maybeRateLimitedResponse(error) ??
+        new Response(JSON.stringify({ error: "Rate limiter failed" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        })
       );
     }
-    
+
     const body = await request.json().catch(() => ({}));
     const { threadId, message, userId: clientUserId } = body as {
       threadId?: string;
@@ -208,43 +186,46 @@ http.route({
         );
       }
 
+      const detectedChannel = detectChannel({ type: "api_chat", headers: request.headers });
       let tid = threadId;
       if (!tid) {
         const { threadId: newId } = await ctx.runMutation(
-          apiAny.agents.actions.createThreadAction,
-          authUser ? { userId: authUser.id } : { userId: anonymousUserId }
+          api.agents.actions.createThreadAction,
+          authUser
+            ? { userId: authUser.id, channel: detectedChannel }
+            : { userId: anonymousUserId, channel: detectedChannel }
         );
         tid = newId;
       }
-      await ctx.runMutation(apiAny.agents.actions.sendMessage, {
+      await ctx.runMutation(api.agents.actions.sendMessage, {
         threadId: tid,
         body: message,
         userId: authUser?.id ?? anonymousUserId,
-        channel: detectChannel({ type: "api_chat", headers: request.headers }),
+        channel: detectedChannel,
       });
       return new Response(
         JSON.stringify({ threadId: tid, status: "sent" }),
         { headers: { "Content-Type": "application/json" } }
       );
     } catch (e) {
-      return new Response(
-        JSON.stringify({ error: String(e) }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
+      const rateLimited = maybeRateLimitedResponse(e);
+      if (rateLimited) return rateLimited;
+      console.error("[http.chat] request failed", e);
+      return internalErrorResponse();
     }
   }),
 });
 
 /**
  * Test helper API: returns generated reply payload synchronously.
- * Part A6: Admin only; 404 in production.
+ * Admin only; disabled by default unless AGENT_TEST_HTTP_ENDPOINTS is truthy.
  */
 http.route({
   path: "/api/test/agent-reply",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    if (process.env.NODE_ENV === "production") {
-      return new Response(JSON.stringify({ error: "Not available in production" }), {
+    if (!isAgentTestEndpointsEnabled()) {
+      return new Response(JSON.stringify({ error: "Not available" }), {
         status: 404,
         headers: { "Content-Type": "application/json" },
       });
@@ -269,22 +250,17 @@ http.route({
         headers: { "Content-Type": "application/json" },
       });
     }
-    const clientIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-    const rateLimitKey = `test-agent-reply:${clientIp}`;
-    const rateLimit = checkRateLimit(rateLimitKey, 30, 60000);
-    if (!rateLimit.allowed) {
+    try {
+      await enforceHttpRateLimit(ctx, {
+        limitName: "httpTestAgentReplyPerIp",
+        key: `test-agent-reply:${getClientIp(request)}`,
+      });
+    } catch (error) {
+      const limited = maybeRateLimitedResponse(error);
+      if (limited) return limited;
       return new Response(
-        JSON.stringify({
-          error: "Rate limit exceeded",
-          retryAfter: rateLimit.retryAfter,
-        }),
-        {
-          status: 429,
-          headers: {
-            "Content-Type": "application/json",
-            "Retry-After": String(rateLimit.retryAfter),
-          },
-        }
+        JSON.stringify({ error: "Rate limiter failed" }),
+        { status: 503, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -310,7 +286,7 @@ http.route({
     }
 
     try {
-      const reply = await ctx.runAction(internalAny.agents.actions.generateReplyAndReturnText, {
+      const reply = await ctx.runAction(internal.agents.actions.generateReplyAndReturnText, {
         userId: userId ?? `test-${crypto.randomUUID()}`,
         message,
         channel: channel ?? detectChannel({ type: "api_chat", headers: request.headers }),
@@ -320,21 +296,19 @@ http.route({
         headers: { "Content-Type": "application/json" },
       });
     } catch (e) {
-      return new Response(
-        JSON.stringify({ error: String(e) }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
+      console.error("[http.test.agent-reply] request failed", e);
+      return internalErrorResponse();
     }
   }),
 });
 
-/** Column test runner: POST body { userId?, channel? }. Part A6: Admin only; 404 in production. */
+/** Column test runner: POST body { userId?, channel? }. Admin only; disabled by default. */
 http.route({
   path: "/api/test/column",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    if (process.env.NODE_ENV === "production") {
-      return new Response(JSON.stringify({ error: "Not available in production" }), {
+    if (!isAgentTestEndpointsEnabled()) {
+      return new Response(JSON.stringify({ error: "Not available" }), {
         status: 404,
         headers: { "Content-Type": "application/json" },
       });
@@ -359,13 +333,17 @@ http.route({
         headers: { "Content-Type": "application/json" },
       });
     }
-    const clientIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-    const rateLimitKey = `test-column:${clientIp}`;
-    const rateLimit = checkRateLimit(rateLimitKey, 5, 120000); // 5 runs per 2 min
-    if (!rateLimit.allowed) {
+    try {
+      await enforceHttpRateLimit(ctx, {
+        limitName: "httpTestColumnPerIp",
+        key: `test-column:${getClientIp(request)}`,
+      });
+    } catch (error) {
+      const limited = maybeRateLimitedResponse(error);
+      if (limited) return limited;
       return new Response(
-        JSON.stringify({ error: "Rate limit exceeded", retryAfter: rateLimit.retryAfter }),
-        { status: 429, headers: { "Content-Type": "application/json", "Retry-After": String(rateLimit.retryAfter) } }
+        JSON.stringify({ error: "Rate limiter failed" }),
+        { status: 503, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -373,7 +351,7 @@ http.route({
     const { userId, channel } = body as { userId?: string; channel?: "whatsapp" | "app" | "web" };
 
     try {
-      const report = await ctx.runAction(internalAny.agents.actions.runAllColumnTests, {
+      const report = await ctx.runAction(internal.agents.actions.runAllColumnTests, {
         userId: userId ?? `test-column-${crypto.randomUUID()}`,
         channel: channel ?? "app",
       });
@@ -382,11 +360,36 @@ http.route({
         headers: { "Content-Type": "application/json" },
       });
     } catch (e) {
-      return new Response(
-        JSON.stringify({ error: String(e) }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
+      console.error("[http.test.column] request failed", e);
+      return internalErrorResponse();
     }
+  }),
+});
+
+/**
+ * Temporary debug endpoint: returns sanitized WhatsApp env presence (set vs unset).
+ * Only enabled when AGENT_TEST_HTTP_ENDPOINTS is truthy. Remove after investigation.
+ */
+http.route({
+  path: "/api/debug/whatsapp-webhook-env",
+  method: "GET",
+  handler: httpAction(async (_ctx, request) => {
+    const url = new URL(request.url);
+    const debugKey = url.searchParams.get("debug_key");
+    const expectedKey = process.env.WA_WEBHOOK_DEBUG_KEY;
+    const allowedByKey = expectedKey && debugKey === expectedKey;
+    if (!isAgentTestEndpointsEnabled() && !allowedByKey) {
+      return new Response("Not Found", { status: 404 });
+    }
+    const body = JSON.stringify({
+      whatsappVerifyTokenSet: Boolean(process.env.WHATSAPP_VERIFY_TOKEN),
+      whatsappAppSecretSet: Boolean(process.env.WHATSAPP_APP_SECRET),
+      whatsappSkipVerification: process.env.WHATSAPP_SKIP_VERIFICATION ?? "(unset)",
+    });
+    return new Response(body, {
+      headers: { "Content-Type": "application/json" },
+      status: 200,
+    });
   }),
 });
 

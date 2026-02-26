@@ -25,6 +25,7 @@ export const list = query({
     status: v.optional(orderStatusValidator),
     type: v.optional(orderTypeValidator),
   },
+  returns: v.any(),
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
     let q;
@@ -45,6 +46,7 @@ export const list = query({
 
 export const getByUser = query({
   args: { userId: v.string() },
+  returns: v.array(v.any()),
   handler: async (ctx, { userId }) => {
     await requireAdmin(ctx);
     return ctx.db
@@ -56,6 +58,7 @@ export const getByUser = query({
 
 export const getByProperty = query({
   args: { propertyId: v.id("properties") },
+  returns: v.array(v.any()),
   handler: async (ctx, { propertyId }) => {
     await requireAdmin(ctx);
     return ctx.db
@@ -67,6 +70,7 @@ export const getByProperty = query({
 
 export const getByBank = query({
   args: { bankId: v.id("banks") },
+  returns: v.array(v.any()),
   handler: async (ctx, { bankId }) => {
     await requireAdmin(ctx);
     return ctx.db
@@ -78,6 +82,7 @@ export const getByBank = query({
 
 export const getById = query({
   args: { id: v.id("orders") },
+  returns: v.union(v.any(), v.null()),
   handler: async (ctx, { id }) => {
     await requireAdmin(ctx);
     return ctx.db.get(id);
@@ -95,6 +100,7 @@ export const create = mutation({
     intent: v.optional(v.string()),
     notes: v.optional(v.string()),
   },
+  returns: v.id("orders"),
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
     return ctx.db.insert("orders", {
@@ -117,6 +123,7 @@ export const update = mutation({
     notes: v.optional(v.string()),
     intent: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
     const { id, ...updates } = args;
@@ -132,6 +139,7 @@ export const update = mutation({
 
 export const remove = mutation({
   args: { id: v.id("orders") },
+  returns: v.null(),
   handler: async (ctx, { id }) => {
     await requireAdmin(ctx);
     await ctx.db.delete(id);

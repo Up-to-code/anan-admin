@@ -1,6 +1,12 @@
 import { internalMutation, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { systemPrompt, realEstatePrompt, toolsPrompt } from "./lib/prompts";
+import { components } from "./_generated/api";
+import { systemPrompt } from "./agents/anan/instructions/system";
+import {
+  reasoningBlock,
+  realEstatePrompt,
+} from "./agents/anan/instructions/realEstate";
+import { toolsPrompt } from "./agents/anan/instructions/toolsSummary";
 import { ROLE_ADMIN } from "./roles";
 
 const propertyImportValidator = v.object({
@@ -21,6 +27,7 @@ export const importFromJson = mutation({
   args: {
     properties: v.array(propertyImportValidator),
   },
+  returns: v.object({ inserted: v.number() }),
   handler: async (ctx, { properties: props }) => {
     let inserted = 0;
     for (const p of props) {
@@ -44,10 +51,11 @@ export const importFromJson = mutation({
  */
 export const updatePrompts = mutation({
   args: {},
+  returns: v.object({ updated: v.number() }),
   handler: async (ctx) => {
     const prompts = [
       { key: "system", value: systemPrompt },
-      { key: "realEstate", value: realEstatePrompt },
+      { key: "realEstate", value: `${reasoningBlock}\n\n${realEstatePrompt}` },
       { key: "tools", value: toolsPrompt },
     ];
     for (const p of prompts) {
@@ -72,26 +80,47 @@ export const updatePrompts = mutation({
  */
 export const addAdmin = internalMutation({
   args: { userId: v.string() },
+  returns: v.id("adminUsers"),
   handler: async (ctx, { userId }) => {
     const existing = await ctx.db
       .query("adminUsers")
       .withIndex("userId", (q) => q.eq("userId", userId))
       .first();
-    const adminDocId = existing
-      ? existing._id
-      : await ctx.db.insert("adminUsers", { userId });
+    if (existing) return existing._id;
+    return await ctx.db.insert("adminUsers", { userId });
+  },
+});
 
-    const profile = await ctx.db
-      .query("userProfiles")
+/**
+ * Add a user to the admin allowlist by email. Run from Convex dashboard or CLI:
+ *   npx convex run seed:addAdminByEmail '{"email":"adminadmin@gmail.com"}'
+ *   (use --prod for production deployment)
+ *
+ * Admin auth flow:
+ * 1. User must exist in Better Auth first: sign up once in the app that uses
+ *    this Convex deployment (admin app signup/signin or web app).
+ * 2. Then run this mutation; it looks up the user by email and adds them to adminUsers.
+ */
+export const addAdminByEmail = mutation({
+  args: { email: v.string() },
+  returns: v.id("adminUsers"),
+  handler: async (ctx, { email }) => {
+    const user = await ctx.runQuery(components.betterAuth.adapter.findOne, {
+      model: "user",
+      where: [{ field: "email", value: email }],
+    });
+    if (!user || typeof user !== "object") {
+      throw new Error(
+        `No user found with email: ${email}. Have them sign up first in the app that uses this Convex deployment (admin or web), then run this again.`
+      );
+    }
+    const userId = String((user as { _id: string })._id);
+    const existing = await ctx.db
+      .query("adminUsers")
       .withIndex("userId", (q) => q.eq("userId", userId))
       .first();
-    if (profile) {
-      await ctx.db.patch(profile._id, { role: ROLE_ADMIN });
-    } else {
-      await ctx.db.insert("userProfiles", { userId, role: ROLE_ADMIN });
-    }
-
-    return adminDocId;
+    if (existing) return existing._id;
+    return await ctx.db.insert("adminUsers", { userId });
   },
 });
 
@@ -102,20 +131,11 @@ export const addAdmin = internalMutation({
  */
 export const migrateAdminUsersToRoles = internalMutation({
   args: {},
+  returns: v.object({ migrated: v.number(), inserted: v.number() }),
   handler: async (ctx) => {
     const admins = await ctx.db.query("adminUsers").collect();
     let inserted = 0;
     for (const a of admins) {
-      const profile = await ctx.db
-        .query("userProfiles")
-        .withIndex("userId", (q) => q.eq("userId", a.userId))
-        .first();
-      if (profile) {
-        await ctx.db.patch(profile._id, { role: ROLE_ADMIN });
-      } else {
-        await ctx.db.insert("userProfiles", { userId: a.userId, role: ROLE_ADMIN });
-      }
-
       const verified = await ctx.db
         .query("verifiedPhones")
         .withIndex("userId", (q) => q.eq("userId", a.userId))
@@ -144,6 +164,7 @@ export const migrateAdminUsersToRoles = internalMutation({
  */
 export const run = mutation({
   args: {},
+  returns: v.any(),
   handler: async (ctx) => {
     const existingBanks = await ctx.db.query("banks").take(1);
     const existingPrompts = await ctx.db.query("prompts").take(1);
@@ -154,7 +175,7 @@ export const run = mutation({
       await ctx.db.insert("prompts", { key: "system", value: systemPrompt });
       await ctx.db.insert("prompts", {
         key: "realEstate",
-        value: realEstatePrompt,
+        value: `${reasoningBlock}\n\n${realEstatePrompt}`,
       });
       await ctx.db.insert("prompts", { key: "tools", value: toolsPrompt });
     }
@@ -162,8 +183,8 @@ export const run = mutation({
     if (existingAISettings.length === 0) {
       // Initialize default AI settings
       const defaultSettings = [
-        { key: "defaultModel", value: "openai/gpt-4o-mini" },
-        { key: "searchModel", value: "openai/gpt-4o-mini" },
+        { key: "defaultModel", value: "moonshotai/kimi-k2-thinking" },
+        { key: "searchModel", value: "moonshotai/kimi-k2-thinking" },
         { key: "maxTokens", value: "4096" },
         { key: "temperature", value: "0.7" },
         { key: "enableCache", value: "true" },

@@ -1,7 +1,7 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createOpenAI } from "@ai-sdk/openai";
-import type { EmbeddingModelV3 } from "@ai-sdk/provider";
-import type { LanguageModelV3 } from "@ai-sdk/provider";
+import type { EmbeddingModelV2 } from "@ai-sdk/provider";
+import type { LanguageModelV2 } from "@ai-sdk/provider";
 import { getAgentLLMConfig } from "../agents/config";
 
 const OPENROUTER_EMBEDDING_MODEL = "openai/text-embedding-3-small";
@@ -13,12 +13,13 @@ const OPENROUTER_EMBEDDING_MODEL = "openai/text-embedding-3-small";
  * - server: custom production server at LLM_BASE_URL
  * See convex/agents/config.ts and .env.example.
  */
-export function getChatModel(): LanguageModelV3 {
+export function getChatModel(modelOverride?: string): LanguageModelV2 {
   const config = getAgentLLMConfig();
+  const selectedModel = modelOverride?.trim() || config.model;
 
   if (config.mode === "openrouter") {
     const openrouter = createOpenRouter({ apiKey: config.apiKey });
-    return openrouter.chat(config.model);
+    return openrouter.chat(selectedModel);
   }
 
   if (config.mode === "local" || config.mode === "server") {
@@ -26,7 +27,7 @@ export function getChatModel(): LanguageModelV3 {
       baseURL: config.baseURL,
       apiKey: config.apiKey?.trim() || "dummy",
     });
-    return openai.chat(config.model);
+    return openai.chat(selectedModel);
   }
 
   throw new Error(`Unsupported LLM mode: ${(config as { mode: string }).mode}`);
@@ -36,7 +37,7 @@ export function getChatModel(): LanguageModelV3 {
  * Returns the embedding model for agents. Uses OpenRouter when LLM_MODE=openrouter
  * (single API key for chat + embeddings); otherwise OpenAI-compatible at baseURL.
  */
-export function getEmbeddingModel(): EmbeddingModelV3 {
+export function getEmbeddingModel(): EmbeddingModelV2<string> {
   const config = getAgentLLMConfig();
 
   if (config.mode === "openrouter") {

@@ -99,6 +99,8 @@ export const SAUDI_CITIES = [
 
 /** Search cache TTL: 15 minutes. Kept for backward compat. */
 export const SEARCH_CACHE_TTL_MS = 15 * 60 * 1000;
+/** Global cross-user search cache TTL (freshness-biased). */
+export const GLOBAL_SEARCH_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2h
 
 /** Three-tier property cache TTLs */
 export const SEARCH_CACHE_TTL_HOT_MS = 15 * 60 * 1000; // 15 min
@@ -141,9 +143,49 @@ export const PREFERRED_PROPERTY_SOURCE_DOMAINS: string[] = [
   "luxuryhomes.ae",
 ];
 
+/** High-priority Saudi property portals for targeted web search expansion. */
+export const SAUDI_PROPERTY_PRIORITY_DOMAINS: string[] = [
+  "wasalt.sa",
+  "bayut.sa",
+  "propertyfinder.sa",
+  "aqar.forsale",
+  "sa.aqar.forsale",
+  "opensooq.com",
+  "olx.com.sa",
+  "haraj.com.sa",
+  "mubawab.sa",
+  "realestate.sa",
+  "sakan.sa",
+  "ejar.sa",
+];
+
+/** High-priority UAE property portals for targeted web search expansion. */
+export const UAE_PROPERTY_PRIORITY_DOMAINS: string[] = [
+  "bayut.com",
+  "propertyfinder.ae",
+  "dubizzle.com",
+  "betterhomes.ae",
+  "bhomes.com",
+  "propsearch.ae",
+  "justproperty.com",
+  "zoomproperty.com",
+  "luxuryhomes.ae",
+  "famproperties.com",
+  "metropolitan.realestate",
+  "hausandhaus.com",
+];
+
+/** Total popular Saudi + UAE domains for deep web discovery (>=20). */
+export const INTERNATIONAL_PROPERTY_PRIORITY_DOMAINS: string[] = [
+  ...SAUDI_PROPERTY_PRIORITY_DOMAINS,
+  ...UAE_PROPERTY_PRIORITY_DOMAINS,
+];
+
 export const TOP_SOURCE_LIMIT = 3;
 export const TOP_CARDS_PER_SOURCE_LIMIT = 3;
 export const TOP_CARDS_PER_SOURCE = TOP_CARDS_PER_SOURCE_LIMIT;
+/** Number of top candidate properties to deeply enrich per search run. */
+export const DETAIL_ENRICHMENT_LIMIT = 3;
 export const MIN_CONFIDENCE_FOR_USER = 0.4;
 export const PARALLEL_DETAIL_BATCH = 3;
 export const SEARCH_CIRCUIT_BREAKER_MS = 8000;

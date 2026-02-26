@@ -123,7 +123,8 @@ export type IntentType =
   | "property_details"
   | "financing"
   | "general"
-  | "handoff";
+  | "handoff"
+  | "objection";
 
 export interface IntentClassification {
   intent: IntentType;
@@ -132,99 +133,7 @@ export interface IntentClassification {
   suggestedWorkflow: WorkflowDefinition | null;
 }
 
-export function classifyIntent(userInput: string): IntentClassification {
-  const input = userInput.toLowerCase();
-
-  const propertySearchPatterns = [
-    /(?:find|search|looking for|want|need|ابحث|أبحث|ابي|ادور).{0,30}(?:apartment|villa|house|property|شقة|فيلا|عقار|بيت)/i,
-    /(?:show|اعرض).{0,20}(?:properties|عقارات)/i,
-    /\d\s*(?:bed|bedroom|غرف)/i,
-    /(?:budget|ميزانية).{0,10}\d/i,
-  ];
-
-  const propertyDetailsPatterns = [
-    /(?:more|تفاصيل|مزيد).{0,20}(?:details|info|information)/i,
-    /(?:second|الثاني|third|الثالث).{0,10}(?:one|property|عقار)/i,
-    /(?:this|هذا).{0,10}(?:property|عقار|شقة)/i,
-    /(?:tell me more|اخبرني المزيد)/i,
-  ];
-
-  const financingPatterns = [
-    /(?:loan|mortgage|financing|قرض|تمويل|رهن)/i,
-    /(?:bank|بنك).{0,20}(?:product|offer|عرض)/i,
-    /(?:finance|موّل).{0,20}(?:this|هذا)/i,
-  ];
-
-  const handoffPatterns = [
-    /(?:speak|talk|اتصل|كلم).{0,20}(?:human|agent|شخص|موظف)/i,
-    /(?:transfer|حولني).{0,20}(?:sales|المبيعات)/i,
-  ];
-
-  let maxScore = 0;
-  let detectedIntent: IntentType = "general";
-
-  for (const pattern of propertySearchPatterns) {
-    if (pattern.test(input)) {
-      const score = 0.9;
-      if (score > maxScore) {
-        maxScore = score;
-        detectedIntent = "property_search";
-      }
-    }
-  }
-
-  for (const pattern of propertyDetailsPatterns) {
-    if (pattern.test(input)) {
-      const score = 0.85;
-      if (score > maxScore) {
-        maxScore = score;
-        detectedIntent = "property_details";
-      }
-    }
-  }
-
-  for (const pattern of financingPatterns) {
-    if (pattern.test(input)) {
-      const score = 0.85;
-      if (score > maxScore) {
-        maxScore = score;
-        detectedIntent = "financing";
-      }
-    }
-  }
-
-  for (const pattern of handoffPatterns) {
-    if (pattern.test(input)) {
-      const score = 0.9;
-      if (score > maxScore) {
-        maxScore = score;
-        detectedIntent = "handoff";
-      }
-    }
-  }
-
-  const entities = extractEntities(userInput);
-
-  let suggestedWorkflow: WorkflowDefinition | null = null;
-  switch (detectedIntent) {
-    case "property_search":
-      suggestedWorkflow = PROPERTY_SEARCH_WORKFLOW;
-      break;
-    case "property_details":
-      suggestedWorkflow = PROPERTY_DETAILS_WORKFLOW;
-      break;
-    case "financing":
-      suggestedWorkflow = FINANCING_WORKFLOW;
-      break;
-  }
-
-  return {
-    intent: detectedIntent,
-    confidence: maxScore || 0.5,
-    entities,
-    suggestedWorkflow,
-  };
-}
+// Redundant classifyIntent removed; use classifyRuntimeIntent and detectSearchIntent.
 
 function extractEntities(input: string): Record<string, string> {
   const entities: Record<string, string> = {};
@@ -418,3 +327,13 @@ export {
   getToolCacheKey,
 } from "./toolRegistry";
 export type { ToolMetadata, ToolSelectionResult } from "./toolRegistry";
+export { classifyRuntimeIntent } from "./intentClassifier";
+export { buildSpecialistTasks } from "./toolPlanner";
+export { createExecutionPlan } from "./executionPolicy";
+export type {
+  AgentRuntimeContext,
+  SpecialistTask,
+  SpecialistResult,
+  ExecutionPlan,
+  FinalResponseEnvelope,
+} from "./types";

@@ -48,7 +48,6 @@ export {
   notificationsUnreadCount,
   notificationAcknowledge,
   notificationResolve,
-  userActivitySeries,
   reviewsList,
   favoritesList,
   getUserFullData,
@@ -60,6 +59,8 @@ export {
   getTotalAICostsByUserId,
   getToolCostsByUserId,
 } from "../../admin/costs";
+
+export { listWhatsAppInboundMessages } from "../../admin/whatsapp";
 
 export { agentLLMConfig } from "../../admin/agentConfig";
 

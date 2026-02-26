@@ -13,6 +13,8 @@ import { extractQueryLocation } from "../../_lib/location";
 import { cleanWhitespace } from "../../_lib/sanitize";
 import { isLikelyPropertyDetailUrl } from "../../_lib/location";
 import type { PropertyCardCandidate, StagehandState } from "./types";
+import { type GenericActionCtx } from "convex/server";
+import { type DataModel } from "../../../_generated/dataModel";
 
 const WASALT_BASE = "https://wasalt.sa";
 
@@ -101,7 +103,7 @@ function classifyStagehandError(error: unknown): string {
 }
 
 export async function extractWasaltListingCards(
-  ctx: unknown,
+  ctx: GenericActionCtx<DataModel>,
   listingUrl: string,
   maxCards: number,
   state: StagehandState
@@ -124,12 +126,13 @@ export async function extractWasaltListingCards(
   try {
     const stagehand = new Stagehand(components.stagehand, config);
 
-    const extracted = await stagehand.extract(ctx as any, {
+    const extracted = await stagehand.extract(ctx, {
       url: listingUrl,
       instruction:
         `Extract all property listing cards from this Wasalt search results page (up to ${maxCards}). ` +
         "Each card links to a detail page (URL like wasalt.sa/property/sale/... or wasalt.sa/property/rent/...). " +
-        "Return full absolute URLs for each card. For each card, return title, url, snippet, and imageUrl if available.",
+        "Return full absolute URLs for each card. For each card, extract title, url, snippet, imageUrl, price, beds, baths, area, and location. " +
+        "Properties usually display price prominently, along with bed/bath icons.",
       schema: z.object({
         cards: z
           .array(
@@ -138,6 +141,11 @@ export async function extractWasaltListingCards(
               url: z.string().optional(),
               snippet: z.string().optional(),
               imageUrl: z.string().optional(),
+              price: z.string().optional(),
+              beds: z.string().optional(),
+              baths: z.string().optional(),
+              area: z.string().optional(),
+              location: z.string().optional(),
             })
           )
           .optional(),

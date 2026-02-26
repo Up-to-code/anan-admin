@@ -1,16 +1,8 @@
 /**
- * Tool usage summary for the agent.
+ * Legacy compatibility shim.
+ * Canonical routing/tool policy now lives in routing.ts (priority stack v0.0.9).
  */
 
-export const toolsPrompt = `**ROUTING (CRITICAL)**:
-- **Property intent** (apartments, villas, listings, "find in X", "شقق للبيع", "apartments in Jeddah"): Use smartPropertySearch IMMEDIATELY. Do NOT ask clarifying questions first. Search first, show results, then ask follow-up if needed.
-- **General intent** (rates, neighborhoods, market trends, regulations, "best areas", "mortgage rates"): Use webSearch or searchRealEstateInfo. NEVER use smartPropertySearch for general real estate info.
-- **Combined queries** ("properties in X + best neighborhoods"): Call both smartPropertySearch AND searchRealEstateInfo; combine in reply.
+import { routingRules } from "./routing";
 
-checkUserLimits: verify whether user can continue chat under plan and daily limits when needed. getUserProfile: check profile before asking. saveUserProfile: save after user shares. getKnowledgePage: loan-guide, saudi-buying, first-time-buyer. requestHumanHandoff: ready_to_buy/ready_to_sell + include aiHandoffReason/customerNeedsSummary/salesTalkingPoints/recommendationSummary. createSalesOrderDraft: create/update sales draft order for qualified intent and include aiHandoffReason/customerNeedsSummary/salesTalkingPoints/recommendationSummary.
-**Memory tools**: getLastSearchContext: returns { query, findingsCount, createdAt }. Call this when user says "another"/"more options"/"خيارات ثانية" so you reuse the same query with refreshToken: "more" in smartPropertySearch. getLastSearchFindings: returns the list of properties from the last search (index, title, propertyUrl, description, priceHint, locationHint, etc.). Use when the user refers to a property you already showed ("the second one", "هذا العقار") or says we searched this URL before, so you can identify which property they mean. getMoreDetailsForProperty(propertyUrl, title): use when the user asks for more information about a specific property; call getLastSearchFindings first to get the propertyUrl and title, then call this to fetch a richer snippet and summarize for the user.
-smartPropertySearch: primary property search for listings only. Property intent (apartments, villas, find in X) → smartPropertySearch. Always pass threadId when available. Reuses recent search results (within 24h). For "another" flow: getLastSearchContext first, then smartPropertySearch with refreshToken: "more". Results prefer bayut, propertyfinder, etc.  getBankInfo/getBankBundles: banks, loans. listPartners, browseAndExtract. getMoreDetailsForProperty: returns full description, Property Information table, and images; include full content when presenting.
-webSearch: current prices, market news, trends, up-to-date web info. General real estate (rates, neighborhoods, regulations) → webSearch or searchRealEstateInfo. Do NOT use for property listings.
-searchRealEstateInfo: mortgage rates, best neighborhoods, market trends, regulations, area guides. Use for rates, trends, neighborhoods, regulations. Do NOT use for property listings (use smartPropertySearch instead).
-formatPropertyOffer: format raw offer blocks for clean presentation. Use after search results to standardize title, price, location, description. Returns leadText and formatted offerBlocks.
-In user-facing text, do not mention search providers/vendors or internal data sources. Share URLs only if the user explicitly asks for links.`;
+export const toolsPrompt = routingRules;

@@ -13,18 +13,18 @@ import {
 import type { FunctionReference } from "convex/server";
 
 type MemoryApi = {
-  store: FunctionReference<"mutation", "public">;
-  storeInteraction: FunctionReference<"mutation", "public">;
-  storeEntityRelation: FunctionReference<"mutation", "public">;
-  getRelevantContext: FunctionReference<"query", "public">;
+  store: FunctionReference<"mutation", "public" | "internal">;
+  storeInteraction: FunctionReference<"mutation", "public" | "internal">;
+  storeEntityRelation: FunctionReference<"mutation", "public" | "internal">;
+  getRelevantContext: FunctionReference<"query", "public" | "internal">;
 };
 
 type RunQuery = (
-  ref: FunctionReference<"query", "public">,
+  ref: FunctionReference<"query", "public" | "internal">,
   args: Record<string, unknown>,
 ) => Promise<unknown>;
 type RunMutation = (
-  ref: FunctionReference<"mutation", "public">,
+  ref: FunctionReference<"mutation", "public" | "internal">,
   args: Record<string, unknown>,
 ) => Promise<unknown>;
 
@@ -37,6 +37,23 @@ interface MemoryContext {
     entityType?: string;
   }>;
   summary: string;
+}
+
+function parsePositiveInt(value: string): number | undefined {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function normalizeMemoryContext(input: unknown): MemoryContext {
+  const maybe = input as Partial<MemoryContext> | null | undefined;
+  return {
+    preferences: Array.isArray(maybe?.preferences) ? maybe.preferences : [],
+    constraints: Array.isArray(maybe?.constraints) ? maybe.constraints : [],
+    recentInteractions: Array.isArray(maybe?.recentInteractions)
+      ? maybe.recentInteractions
+      : [],
+    summary: typeof maybe?.summary === "string" ? maybe.summary : "",
+  };
 }
 
 function getContextUser(ctx: unknown): {
@@ -53,7 +70,7 @@ function parseMemoryToConstraints(memory: MemoryContext): UserConstraints {
 
   for (const pref of memory.preferences) {
     if (pref.key === "budget_preference") {
-      constraints.budget = parseInt(pref.value, 10);
+      constraints.budget = parsePositiveInt(pref.value);
     } else if (pref.key.startsWith("location_preference_")) {
       constraints.location = pref.value;
     } else if (pref.key === "property_type_preference") {
@@ -62,15 +79,15 @@ function parseMemoryToConstraints(memory: MemoryContext): UserConstraints {
       pref.key === "min_beds_constraint" ||
       pref.key === "beds_preference"
     ) {
-      constraints.minBeds = parseInt(pref.value, 10);
+      constraints.minBeds = parsePositiveInt(pref.value);
     }
   }
 
   for (const c of memory.constraints) {
     if (c.key === "budget_preference" || c.key === "budget") {
-      constraints.budget = parseInt(c.value, 10);
+      constraints.budget = parsePositiveInt(c.value);
     } else if (c.key === "min_beds_constraint") {
-      constraints.minBeds = parseInt(c.value, 10);
+      constraints.minBeds = parsePositiveInt(c.value);
     }
   }
 
@@ -175,12 +192,20 @@ export function createMemoryAwarePropertyTools(
         });
       }
 
-      const memory = await runQuery(memoryApi.getRelevantContext, {
-        userId,
-        query: query ?? "",
-      });
-
-      return toonEncode(memory);
+      try {
+        const memory = await runQuery(memoryApi.getRelevantContext, {
+          userId,
+          query: query ?? "",
+        });
+        return toonEncode(normalizeMemoryContext(memory));
+      } catch {
+        return toonEncode({
+          preferences: [],
+          constraints: [],
+          recentInteractions: [],
+          summary: "Memory lookup failed.",
+        });
+      }
     },
   });
 
@@ -202,6 +227,14 @@ export function createMemoryAwarePropertyTools(
     handler: async (ctx, { key, value, confidence, source }) => {
       const { userId } = getContextUser(ctx);
       if (!userId) return toonEncode({ success: false, reason: "No user ID" });
+      const normalizedKey = key.trim();
+      const normalizedValue = value.trim();
+      if (!normalizedKey || !normalizedValue) {
+        return toonEncode({
+          success: false,
+          reason: "Preference key and value are required",
+        });
+      }
 
       const runMutation = (ctx as { runMutation?: RunMutation }).runMutation;
       if (typeof runMutation !== "function") {
@@ -211,16 +244,24 @@ export function createMemoryAwarePropertyTools(
         });
       }
 
-      await runMutation(memoryApi.store, {
-        userId,
-        memoryType: key.includes("constraint") ? "constraint" : "preference",
-        key,
-        value,
-        confidence,
-        source: source ?? "inferred_from_search",
-      });
-
-      return toonEncode({ success: true, key, value });
+      try {
+        await runMutation(memoryApi.store, {
+          userId,
+          memoryType: normalizedKey.includes("constraint")
+            ? "constraint"
+            : "preference",
+          key: normalizedKey,
+          value: normalizedValue,
+          confidence,
+          source: source ?? "inferred_from_search",
+        });
+        return toonEncode({ success: true, key: normalizedKey, value: normalizedValue });
+      } catch {
+        return toonEncode({
+          success: false,
+          reason: "Failed to store preference",
+        });
+      }
     },
   });
 
@@ -246,43 +287,48 @@ export function createMemoryAwarePropertyTools(
         return toonEncode({ success: false });
       }
 
-      await runMutation(memoryApi.storeInteraction, {
-        userId,
-        entityType: "property",
-        entityId: propertyUrl,
-        action,
-        details: JSON.stringify({ title: propertyTitle, price }),
-        metadata: { channel },
-      });
-
-      await runMutation(memoryApi.storeEntityRelation, {
-        fromType: "user",
-        fromId: userId,
-        relationType: action.toUpperCase(),
-        toType: "property",
-        toId: propertyUrl,
-        userId,
-        strength: action === "liked" ? 0.9 : action === "inquired" ? 0.8 : 0.5,
-      });
-
-      if (location) {
-        await runMutation(memoryApi.storeEntityRelation, {
-          fromType: "property",
-          fromId: propertyUrl,
-          relationType: "LOCATED_IN",
-          toType: "location",
-          toId: location.toLowerCase().replace(/\s+/g, "_"),
+      try {
+        await runMutation(memoryApi.storeInteraction, {
           userId,
+          entityType: "property",
+          entityId: propertyUrl,
+          action,
+          details: JSON.stringify({ title: propertyTitle, price }),
+          metadata: { channel },
         });
 
         await runMutation(memoryApi.storeEntityRelation, {
           fromType: "user",
           fromId: userId,
-          relationType: "SEARCHED_IN",
-          toType: "location",
-          toId: location.toLowerCase().replace(/\s+/g, "_"),
+          relationType: action.toUpperCase(),
+          toType: "property",
+          toId: propertyUrl,
           userId,
+          strength:
+            action === "liked" ? 0.9 : action === "inquired" ? 0.8 : 0.5,
         });
+
+        if (location) {
+          await runMutation(memoryApi.storeEntityRelation, {
+            fromType: "property",
+            fromId: propertyUrl,
+            relationType: "LOCATED_IN",
+            toType: "location",
+            toId: location.toLowerCase().replace(/\s+/g, "_"),
+            userId,
+          });
+
+          await runMutation(memoryApi.storeEntityRelation, {
+            fromType: "user",
+            fromId: userId,
+            relationType: "SEARCHED_IN",
+            toType: "location",
+            toId: location.toLowerCase().replace(/\s+/g, "_"),
+            userId,
+          });
+        }
+      } catch {
+        return toonEncode({ success: false, reason: "Failed to track interaction" });
       }
 
       return toonEncode({ success: true });
@@ -304,16 +350,22 @@ export function createMemoryAwarePropertyTools(
         return toonEncode({ properties: [] });
       }
 
-      const interactions = (await runQuery(memoryApi.getRelevantContext, {
-        userId,
-        query: "property interaction",
-      })) as MemoryContext;
+      try {
+        const memory = normalizeMemoryContext(
+          await runQuery(memoryApi.getRelevantContext, {
+            userId,
+            query: "property interaction",
+          }),
+        );
 
-      const propertyInteractions = interactions.recentInteractions
-        .filter((i: { entityType?: string }) => i.entityType === "property")
-        .slice(0, limit);
+        const propertyInteractions = memory.recentInteractions
+          .filter((i: { entityType?: string }) => i.entityType === "property")
+          .slice(0, limit);
 
-      return toonEncode({ properties: propertyInteractions });
+        return toonEncode({ properties: propertyInteractions });
+      } catch {
+        return toonEncode({ properties: [] });
+      }
     },
   });
 

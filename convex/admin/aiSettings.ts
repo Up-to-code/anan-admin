@@ -8,8 +8,8 @@ import { requireAdmin } from "../lib/auth";
 
 // Default settings
 const DEFAULT_SETTINGS: Record<string, string> = {
-  defaultModel: "openai/gpt-4o-mini",
-  searchModel: "openai/gpt-4o-mini",
+  defaultModel: "moonshotai/kimi-k2-thinking",
+  searchModel: "moonshotai/kimi-k2-thinking",
   maxTokens: "4096",
   temperature: "0.7",
   enableCache: "true",

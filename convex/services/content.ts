@@ -5,7 +5,7 @@
 import { internalMutation, mutation, query } from "../_generated/server";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
-import { api, internal } from "../_generated/api";
+
 import { optionalAuth, requireAdmin } from "../lib/auth";
 import { buildSalesSummaryFields, extractTopics } from "../domain/order";
 
@@ -14,6 +14,7 @@ const PROMPT_KEYS = ["system", "realEstate", "tools"] as const;
 /** Get merged instructions from prompts table. */
 export const getMergedInstructions = query({
   args: {},
+  returns: v.union(v.string(), v.null()),
   handler: async (ctx) => {
     const docs = await ctx.db.query("prompts").collect();
     const byKey = Object.fromEntries(docs.map((d) => [d.key, d.value]));
@@ -71,6 +72,7 @@ const createHandoffArgs = {
 /** Internal: create handoff (no auth). Used by agent. */
 export const createHandoffInternal = internalMutation({
   args: createHandoffArgs,
+  returns: v.id("humanHandoffs"),
   handler: async (
     ctx,
     {
@@ -104,7 +106,7 @@ export const createHandoffInternal = internalMutation({
     const serviceCategory =
       intent === "ready_to_buy" ? "buy_property" : intent === "ready_to_sell" ? "sell_property" : "other";
 
-    await ctx.runMutation(api.admin.orders.createDraftOrderFromAgent, {
+    await (ctx as any).runMutation("admin/orders:createDraftOrderFromAgent", {
       userId,
       type,
       confidenceScore: 0.8,
@@ -120,7 +122,7 @@ export const createHandoffInternal = internalMutation({
       recommendationSummary: summary.recommendationSummary,
     });
 
-    await ctx.runMutation(internal.services.notifications.createSalesNotification, {
+    await (ctx as any).runMutation("services/notifications:createSalesNotification", {
       userId: "sales-team",
       title: "New human handoff request",
       body:
@@ -159,6 +161,7 @@ export const createHandoffInternal = internalMutation({
 /** Create handoff request. */
 export const create = mutation({
   args: createHandoffArgs,
+  returns: v.id("humanHandoffs"),
   handler: async (
     ctx,
     {
@@ -196,7 +199,7 @@ export const create = mutation({
     const serviceCategory =
       intent === "ready_to_buy" ? "buy_property" : intent === "ready_to_sell" ? "sell_property" : "other";
 
-    await ctx.runMutation(api.admin.orders.createDraftOrderFromAgent, {
+    await (ctx as any).runMutation("admin/orders:createDraftOrderFromAgent", {
       userId,
       type,
       confidenceScore: 0.8,
@@ -212,7 +215,7 @@ export const create = mutation({
       recommendationSummary: summary.recommendationSummary,
     });
 
-    await ctx.runMutation(internal.services.notifications.createSalesNotification, {
+    await (ctx as any).runMutation("services/notifications:createSalesNotification", {
       userId: "sales-team",
       title: "New human handoff request",
       body:

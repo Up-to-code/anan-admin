@@ -1,2 +1,5 @@
-/** Canonical backend source lives in /convex. */
-export * from "../../../convex/agents/actions";
+/**
+ * Agent actions public entrypoint.
+ * Kept stable for Convex function paths while implementation is split by feature.
+ */
+export * from "./actions/index";

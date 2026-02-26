@@ -40,6 +40,24 @@ Set in Convex dashboard (or `.env.local` for dev):
 | `WHATSAPP_OTP_RATE_LIMIT` | auth | Max OTPs per window (default `1`). |
 | `WHATSAPP_OTP_RATE_WINDOW_SEC` | auth | Rate window in seconds (default `60`). |
 | `WHATSAPP_BUSINESS_NUMBER` / `WHATSAPP_PHONE_NUMBER` | auth | For “Chat on WhatsApp” link. |
+| `ASSEMBLYAI_API_KEY` | transcription | API key for voice note transcription. |
+| `ASSEMBLYAI_LANGUAGE_CODE` | transcription | Default transcription language (default `ar`). |
+| `ASSEMBLYAI_TIMEOUT_MS` | transcription | Poll timeout for transcript completion (default `15000`). |
+| `ASSEMBLYAI_POLL_INTERVAL_MS` | transcription | Poll interval in ms (default `800`). |
+
+## Production checklist (voice/transcription)
+
+For voice notes to work in production, ensure these Convex env vars are set:
+
+| Variable | Required for voice | If missing |
+|----------|--------------------|------------|
+| `ASSEMBLYAI_API_KEY` | Yes | Transcription fails immediately |
+| `WHATSAPP_ACCESS_TOKEN` | Yes | Media download fails |
+| `WHATSAPP_PHONE_NUMBER_ID` | Yes | No mark-read, no send |
+| `WHATSAPP_APP_SECRET` | For POST verification | 401 if verification enabled |
+| `WHATSAPP_VERIFY_TOKEN` | For GET verification | 403 on subscription |
+
+Audit: `npx convex env list` (with deployment selector for prod).
 
 ## Message flow (POST webhook)
 
@@ -50,6 +68,27 @@ Set in Convex dashboard (or `.env.local` for dev):
    - Mark as read, optional typing indicator.
    - If body looks like OTP (`isOtpLike`) → `internal.features.auth.actions.completeVerification`; send success/error in Arabic.
    - Else → ensure user via `api.services.users.ensureWhatsAppUser`, then `internal.agents.actions.generateReplyAndReturnText` with `channel: "whatsapp"`, send text or text+image.
+   - If media type is `audio` and media id exists → transcribe with AssemblyAI first, then send transcript to agent.
+
+## Operations: Webhook debugging
+
+### Convex Dashboard logs
+
+1. Open [Convex Dashboard](https://dashboard.convex.dev) → select deployment `intent-dolphin-324` → **Logs**.
+2. Trigger webhook requests (GET verification or POST from Meta / curl).
+3. Filter by HTTP or search for `webhook/whatsapp`.
+4. Inspect function invocations, errors, and execution times.
+
+### Debug endpoint (temporary)
+
+`GET /api/debug/whatsapp-webhook-env` returns sanitized env presence when:
+
+- `AGENT_TEST_HTTP_ENDPOINTS` is truthy, or
+- `WA_WEBHOOK_DEBUG_KEY` query param matches the Convex env var.
+
+Example: `curl "https://intent-dolphin-324.convex.site/api/debug/whatsapp-webhook-env?debug_key=YOUR_KEY"`
+
+Returns: `{ whatsappVerifyTokenSet, whatsappAppSecretSet, whatsappSkipVerification }`. Remove this route after investigation.
 
 ## Continuing / extending
 

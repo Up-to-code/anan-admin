@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { tokenizeQuery, dbResultMatchScore } from "./property";
+import { tokenizeQuery, dbResultMatchScore } from "./propertyCache";
 import type { DbPropertyResult } from "../../_lib/types";
 
 describe("tokenizeQuery", () => {

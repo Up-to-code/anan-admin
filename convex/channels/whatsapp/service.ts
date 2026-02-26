@@ -5,7 +5,16 @@
 
 const WHATSAPP_API_VERSION = "v21.0";
 const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 1000;
+const RETRY_BASE_DELAY_MS = 500;
+
+function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 409 || status === 429 || status >= 500;
+}
+
+function getRetryDelayMs(attempt: number): number {
+  const jitter = Math.floor(Math.random() * 150);
+  return Math.min(RETRY_BASE_DELAY_MS * (attempt + 1) + jitter, 4000);
+}
 
 export interface SendResult {
   success: boolean;
@@ -20,9 +29,13 @@ async function fetchWithRetry(
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const res = await fetch(url, options);
     const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    if (res.status === 429 && attempt < MAX_RETRIES - 1) {
-      const retryAfter = (data.error as { retry_after?: number })?.retry_after ?? 1;
-      await new Promise((r) => setTimeout(r, Math.min(retryAfter * 1000, 5000)));
+    if (isRetryableStatus(res.status) && attempt < MAX_RETRIES - 1) {
+      const retryAfterSec = (data.error as { retry_after?: number })?.retry_after;
+      const retryAfterMs =
+        typeof retryAfterSec === "number" && retryAfterSec > 0
+          ? Math.min(retryAfterSec * 1000, 5000)
+          : getRetryDelayMs(attempt);
+      await new Promise((r) => setTimeout(r, retryAfterMs));
       continue;
     }
     return { ok: res.ok, status: res.status, data };

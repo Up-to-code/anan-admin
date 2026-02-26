@@ -11,6 +11,9 @@ const appApi = {
     getLastSearchContext: {} as any,
     getLastSearchFindings: {} as any,
     getCachedSearchResults: {} as any,
+    getGlobalSearchCache: {} as any,
+    upsertGlobalSearchCache: {} as any,
+    trackGlobalSearchCacheHit: {} as any,
   },
   banks: {
     getById: {} as any,
@@ -124,33 +127,34 @@ describe("anan tools: property search fallback flows", () => {
 
   it("smartPropertySearch uses Serper image endpoint fallback when organic has no images", async () => {
     process.env.SERPER_API_KEY = "serper-test-key";
-    globalThis.fetch = vi
-      .fn()
-      .mockResolvedValueOnce({
+    // Use mockImplementation: first call is search, second is images; runSearchAgent may do a 2nd Serper run when findings < 2
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+      const isImages = url.includes("/images");
+      return {
         ok: true,
-        json: async () => ({
-          organic: [
-            {
-              title: "Apartment for Sale in Riyadh",
-              link: "https://example.com/property/7777",
-              snippet: "3 bedroom apartment in Riyadh for 900000 SAR",
-            },
-          ],
-          images: [],
-        }),
-      } as any)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          images: [
-            {
-              title: "Apartment for Sale in Riyadh",
-              link: "https://example.com/property/7777",
-              imageUrl: "https://img.example.com/from-images-endpoint.jpg",
-            },
-          ],
-        }),
-      } as any);
+        json: async () =>
+          isImages
+            ? {
+                images: [
+                  {
+                    title: "Apartment for Sale in Riyadh",
+                    link: "https://example.com/property/7777",
+                    imageUrl: "https://img.example.com/from-images-endpoint.jpg",
+                  },
+                ],
+              }
+            : {
+                organic: [
+                  {
+                    title: "Apartment for Sale in Riyadh",
+                    link: "https://example.com/property/7777",
+                    snippet: "3 bedroom apartment in Riyadh for 900000 SAR",
+                  },
+                ],
+                images: [],
+              },
+      };
+    }) as any;
 
     const tools = createAgentTools(appApi);
     const smartPropertySearch = bindToolCtx(tools.smartPropertySearch, testCtx(vi.fn().mockResolvedValue([])));
@@ -170,25 +174,26 @@ describe("anan tools: property search fallback flows", () => {
 
   it("smartPropertySearch falls back to non-homepage scored sources when detail filter returns zero", async () => {
     process.env.SERPER_API_KEY = "serper-test-key";
-    globalThis.fetch = vi
-      .fn()
-      .mockResolvedValueOnce({
+    // Use mockImplementation so 2nd Serper run (when findings < 2) also gets valid response
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+      const isImages = url.includes("/images");
+      return {
         ok: true,
-        json: async () => ({
-          organic: [
-            {
-              title: "Apartments in Riyadh",
-              link: "https://example.com/listings/riyadh-apartments",
-              snippet: "Apartments in Riyadh with prices and details 900000 SAR",
-            },
-          ],
-          images: [],
-        }),
-      } as any)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ images: [] }),
-      } as any);
+        json: async () =>
+          isImages
+            ? { images: [] }
+            : {
+                organic: [
+                  {
+                    title: "Apartments in Riyadh",
+                    link: "https://example.com/listings/riyadh-apartments",
+                    snippet: "Apartments in Riyadh with prices and details 900000 SAR",
+                  },
+                ],
+                images: [],
+              },
+      };
+    }) as any;
 
     const tools = createAgentTools(appApi);
     const smartPropertySearch = bindToolCtx(
@@ -208,25 +213,26 @@ describe("anan tools: property search fallback flows", () => {
 
   it("smartPropertySearch applies refresh offset when refreshToken is provided", async () => {
     process.env.SERPER_API_KEY = "serper-test-key";
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce({
+    // Use mockImplementation so 2nd Serper run (when findings < 2) also gets valid response
+    const fetchMock = vi.fn().mockImplementation(async (url: string, options?: RequestInit) => {
+      const isImages = url.includes("/images");
+      return {
         ok: true,
-        json: async () => ({
-          organic: [
-            {
-              title: "Apartment listing one",
-              link: "https://example.com/property/9001",
-              snippet: "Apartment in Riyadh for 900000 SAR",
-            },
-          ],
-          images: [],
-        }),
-      } as any)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ images: [] }),
-      } as any);
+        json: async () =>
+          isImages
+            ? { images: [] }
+            : {
+                organic: [
+                  {
+                    title: "Apartment listing one",
+                    link: "https://example.com/property/9001",
+                    snippet: "Apartment in Riyadh for 900000 SAR",
+                  },
+                ],
+                images: [],
+              },
+      };
+    });
     globalThis.fetch = fetchMock as any;
 
     const tools = createAgentTools(appApi);
@@ -249,8 +255,13 @@ describe("anan tools: property search fallback flows", () => {
 
     expect(result.source).toBe("web_fallback");
     expect(result.refreshOffset).toBe(20);
-    const firstSearchCallBody = JSON.parse((fetchMock.mock.calls[0]?.[1]?.body ?? "{}") as string);
-    expect(firstSearchCallBody.start).toBe(20);
+    // First fetch may be agent log; find the Serper search call
+    const serperSearchCall = fetchMock.mock.calls.find(
+      (call) => typeof call[0] === "string" && call[0].includes("serper.dev/search") && !call[0].includes("/images")
+    );
+    expect(serperSearchCall).toBeTruthy();
+    const searchCallBody = JSON.parse((serperSearchCall![1]?.body ?? "{}") as string);
+    expect(searchCallBody.start).toBe(20);
   });
 
   it("smartPropertySearch returns failed state when SERPER key missing", async () => {
@@ -434,5 +445,113 @@ describe("anan tools: property search fallback flows", () => {
     expect(knowledgeCall[1].sourceRuns.length).toBeLessThanOrEqual(3);
     expect(knowledgeCall[1].sourceRuns.length).toBeGreaterThan(0);
     expect(knowledgeCall[1].propertyFindings.length).toBeLessThanOrEqual(9);
+  });
+
+  it("smartPropertySearch invokes runMutation when userId present and search succeeds", async () => {
+    process.env.SERPER_API_KEY = "serper-test-key";
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        organic: [
+          { title: "Villa", link: "https://example.com/p1", snippet: "Villa in Jeddah 2M SAR" },
+        ],
+        images: [],
+      }),
+    }) as any;
+    const runMutation = vi.fn().mockResolvedValue("ok");
+    const tools = createAgentTools(appApi);
+    const smartPropertySearch = bindToolCtx(tools.smartPropertySearch, {
+      runQuery: vi.fn().mockResolvedValue([]),
+      runMutation,
+      userId: "u-memory-test",
+      channel: "whatsapp",
+      threadId: "thread-1",
+    });
+
+    await (smartPropertySearch as any).execute(
+      { query: "villa jeddah", limit: 5, includeImages: true },
+      {} as any
+    );
+
+    expect(runMutation.mock.calls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("smartPropertySearch handles empty organic results without crashing", async () => {
+    process.env.SERPER_API_KEY = "serper-test-key";
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+      const isImages = url.includes("/images");
+      return {
+        ok: true,
+        json: async () =>
+          isImages ? { images: [] } : { organic: [], images: [] },
+      };
+    }) as any;
+    const tools = createAgentTools(appApi);
+    const smartPropertySearch = bindToolCtx(
+      tools.smartPropertySearch,
+      testCtx(vi.fn().mockResolvedValue([]))
+    );
+
+    const encoded = await (smartPropertySearch as any).execute(
+      { query: "xyz nonexis tent", limit: 5, includeImages: true },
+      {} as any
+    );
+    const result = decodeToolResult(encoded);
+
+    expect(result.searchStarted).toBe(true);
+    expect(result.source).toBe("web_fallback_failed");
+    expect(Array.isArray(result.results)).toBe(true);
+    expect(result.results).toHaveLength(0);
+  });
+
+  it("smartPropertySearch returns valid structure when given valid inputs", async () => {
+    process.env.SERPER_API_KEY = "serper-test-key";
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        organic: [
+          { title: "A", link: "https://x.com/1", snippet: "Apartment Riyadh 800k SAR" },
+          { title: "B", link: "https://x.com/2", snippet: "Villa Jeddah 2M SAR" },
+        ],
+        images: [],
+      }),
+    }) as any;
+    const tools = createAgentTools(appApi);
+    const smartPropertySearch = bindToolCtx(
+      tools.smartPropertySearch,
+      testCtx(vi.fn().mockResolvedValue([]))
+    );
+
+    const encoded = await (smartPropertySearch as any).execute(
+      { query: "شقة الرياض", limit: 5, includeImages: true },
+      {} as any
+    );
+    const result = decodeToolResult(encoded);
+
+    expect(result.searchStarted).toBe(true);
+    expect(result.localizedSearchStartedMessage).toBeDefined();
+    expect(result.localizedSearchStartedMessage.ar).toContain("نبحث");
+    expect(Array.isArray(result.results)).toBe(true);
+    expect(result.presentationGuidance).toBeDefined();
+  });
+
+  it("smartPropertySearch handles fetch returning undefined gracefully", async () => {
+    process.env.SERPER_API_KEY = "serper-test-key";
+    globalThis.fetch = vi.fn().mockResolvedValue(undefined) as any;
+    const tools = createAgentTools(appApi);
+    const smartPropertySearch = bindToolCtx(
+      tools.smartPropertySearch,
+      testCtx(vi.fn().mockResolvedValue([]))
+    );
+
+    const encoded = await (smartPropertySearch as any).execute(
+      { query: "apartment", limit: 3, includeImages: false },
+      {} as any
+    );
+    const result = decodeToolResult(encoded);
+
+    expect(result.searchStarted).toBe(true);
+    expect(result.source).toBe("web_fallback_failed");
+    expect(Array.isArray(result.results)).toBe(true);
   });
 });

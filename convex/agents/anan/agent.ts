@@ -4,23 +4,30 @@
 
 import { Agent } from "@convex-dev/agent";
 import { components } from "../../_generated/api";
-import { getLLMTimeoutMs } from "../config";
 import { getChatModel, getEmbeddingModel } from "../../lib/providers";
 import { recordAgentUsage } from "../../costs";
-import { buildAgentInstructions } from "./instructions";
+import { getLLMMaxRetries } from "../config";
 import { createAgentTools } from "./tools";
 import type { AgentToolsApi } from "./tools";
 
+type AgentBuildOptions = {
+  modelOverride?: string;
+};
+
 /** Create the Anan agent with tools bound to the given api. */
-export function createAnanAgent(appApi: AgentToolsApi) {
+export function createAnanAgent(
+  appApi: AgentToolsApi,
+  options?: AgentBuildOptions,
+) {
   const tools = createAgentTools(appApi);
 
   return new Agent(components.agent, {
-    name: "Anan",
-    languageModel: getChatModel(),
+    name: "ANAN",
+    languageModel: getChatModel(options?.modelOverride),
     textEmbeddingModel: getEmbeddingModel(),
-    callSettings: { timeout: getLLMTimeoutMs() },
-    instructions: buildAgentInstructions(),
+    // Runtime calls pass `system` per-request; keep constructor instructions empty
+    // to avoid duplicated/conflicting prompt layers.
+    instructions: "",
     tools,
     maxSteps: 6,
     usageHandler: async (ctx, args) => {
@@ -48,6 +55,9 @@ export function createAnanAgent(appApi: AgentToolsApi) {
         model: args.model,
         provider: args.provider,
       });
+    },
+    callSettings: {
+      maxRetries: getLLMMaxRetries(),
     },
     contextOptions: {
       searchOptions: {

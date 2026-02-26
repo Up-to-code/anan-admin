@@ -38,6 +38,7 @@ export const handoffUpdateStatus = mutation({
     });
     await ctx.db.patch(handoffId, { status });
     if (status === "accepted" || status === "in_progress" || status === "qualified") {
+      // @ts-ignore: Type instantiation is excessively deep and possibly infinite
       await ctx.runMutation(api.admin.orders.createDraftOrderFromAgent, {
         userId: handoff.userId,
         type: handoff.intent === "ready_to_buy" ? "property" : "loan",
@@ -58,6 +59,7 @@ export const handoffUpdateStatus = mutation({
         recommendationSummary: summary.recommendationSummary,
       });
     }
+    // @ts-ignore: Type instantiation is excessively deep and possibly infinite
     await ctx.runMutation(internal.services.notifications.createSalesNotification, {
       userId: "sales-team",
       title: "Handoff status updated",

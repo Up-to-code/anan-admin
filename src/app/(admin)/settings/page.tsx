@@ -62,21 +62,9 @@ const defaultPrompts = [
 ];
 
 const modelOptions = [
+  { value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash", tier: "premium" },
   { value: "moonshotai/kimi-k2-thinking", label: "Kimi K2 Thinking", tier: "premium" },
-  { value: "openai/gpt-4o", label: "GPT-4o", tier: "premium" },
-  { value: "anthropic/claude-sonnet-4.6", label: "Claude Sonnet 4.6", tier: "premium" },
   { value: "qwen/qwen3.5-plus", label: "Qwen 3.5 Plus", tier: "standard" },
-  { value: "openai/gpt-4o-mini", label: "GPT-4o Mini", tier: "standard" },
-  {
-    value: "anthropic/claude-opus-4.6",
-    label: "Claude Opus 4.6",
-    tier: "premium",
-  },
-  {
-    value: "anthropic/claude-3-haiku",
-    label: "Claude 3 Haiku",
-    tier: "standard",
-  },
   { value: "google/gemini-pro-1.5", label: "Gemini Pro 1.5", tier: "premium" },
   {
     value: "google/gemini-2.0-flash-exp",
@@ -380,7 +368,7 @@ export default function SettingsPage() {
                 <div className="space-y-2">
                   <Label>النموذج الافتراضي</Label>
                   <Select
-                    value={getSetting("defaultModel", "openai/gpt-4o-mini")}
+                    value={getSetting("defaultModel", "google/gemini-2.5-flash")}
                     onValueChange={(v) => updateLocalSetting("defaultModel", v)}
                   >
                     <SelectTrigger>
@@ -406,7 +394,7 @@ export default function SettingsPage() {
                 <div className="space-y-2">
                   <Label>نموذج البحث</Label>
                   <Select
-                    value={getSetting("searchModel", "openai/gpt-4o-mini")}
+                    value={getSetting("searchModel", "google/gemini-2.5-flash")}
                     onValueChange={(v) => updateLocalSetting("searchModel", v)}
                   >
                     <SelectTrigger>

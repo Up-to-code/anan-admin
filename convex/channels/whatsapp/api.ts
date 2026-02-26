@@ -16,6 +16,7 @@ export interface ExtractedTextMessage {
   displayName?: string;
   mediaType?: ExtractedMessageMediaType;
   caption?: string;
+  mediaId?: string;
 }
 
 /** Reaction event from webhook (user reacted to our message) */
@@ -38,9 +39,15 @@ interface WebhookMessage {
   text?: { body: string };
   image?: { id?: string; caption?: string; sha256?: string };
   audio?: { id?: string };
+  voice?: { id?: string };
   video?: { id?: string; caption?: string };
   document?: { id?: string; filename?: string; caption?: string };
   reaction?: { message_id: string; emoji?: string };
+  interactive?: {
+    type?: string;
+    button_reply?: { id?: string; title?: string };
+    list_reply?: { id?: string; title?: string; description?: string };
+  };
 }
 
 /**
@@ -102,6 +109,7 @@ export function extractWebhookEvents(body: string): ExtractedTextMessage[] {
               : "User sent an image. Ask them to describe it if you need details.",
             mediaType: "image",
             caption,
+            mediaId: msg.image.id,
           });
           continue;
         }
@@ -111,6 +119,17 @@ export function extractWebhookEvents(body: string): ExtractedTextMessage[] {
             ...base,
             text: "User sent a voice message. Ask them to type the key points if you need details.",
             mediaType: "audio",
+            mediaId: msg.audio.id,
+          });
+          continue;
+        }
+
+        if (msg.voice) {
+          events.push({
+            ...base,
+            text: "User sent a voice message. Ask them to type the key points if you need details.",
+            mediaType: "audio",
+            mediaId: msg.voice.id,
           });
           continue;
         }
@@ -124,6 +143,7 @@ export function extractWebhookEvents(body: string): ExtractedTextMessage[] {
               : "User sent a video message. Ask them to type the key points if you need details.",
             mediaType: "video",
             caption,
+            mediaId: msg.video.id,
           });
           continue;
         }
@@ -134,6 +154,7 @@ export function extractWebhookEvents(body: string): ExtractedTextMessage[] {
             ...base,
             text: `User sent a document (${fn}). Ask them to paste relevant text if you need to analyze it.`,
             mediaType: "document",
+            mediaId: msg.document.id,
           });
           continue;
         }
@@ -214,6 +235,15 @@ export function extractAllWebhookEvents(body: string): {
 
         const msgBase = { from: msg.from, messageId: msg.id, ...base };
 
+        if (msg.type === "interactive" && msg.interactive) {
+          const ir = msg.interactive;
+          const text =
+            ir.button_reply?.title?.trim() ||
+            ir.list_reply?.title?.trim() ||
+            "[User selected an option]";
+          messages.push({ ...msgBase, text, mediaType: "text" });
+          continue;
+        }
         if (msg.text?.body) {
           messages.push({ ...msgBase, text: msg.text.body, mediaType: "text" });
           continue;
@@ -227,6 +257,7 @@ export function extractAllWebhookEvents(body: string): {
               : "User sent an image. Ask them to describe it if you need details.",
             mediaType: "image",
             caption,
+            mediaId: msg.image.id,
           });
           continue;
         }
@@ -235,6 +266,16 @@ export function extractAllWebhookEvents(body: string): {
             ...msgBase,
             text: "User sent a voice message. Ask them to type the key points if you need details.",
             mediaType: "audio",
+            mediaId: msg.audio.id,
+          });
+          continue;
+        }
+        if (msg.voice) {
+          messages.push({
+            ...msgBase,
+            text: "User sent a voice message. Ask them to type the key points if you need details.",
+            mediaType: "audio",
+            mediaId: msg.voice.id,
           });
           continue;
         }
@@ -247,6 +288,7 @@ export function extractAllWebhookEvents(body: string): {
               : "User sent a video message. Ask them to type the key points if you need details.",
             mediaType: "video",
             caption,
+            mediaId: msg.video.id,
           });
           continue;
         }
@@ -256,8 +298,16 @@ export function extractAllWebhookEvents(body: string): {
             ...msgBase,
             text: `User sent a document (${fn}). Ask them to paste relevant text if you need to analyze it.`,
             mediaType: "document",
+            mediaId: msg.document.id,
           });
+          continue;
         }
+        console.warn("[WhatsApp] unhandled message type, using fallback", {
+          type: msg.type,
+          id: msg.id,
+        });
+        const fallbackText = `[User sent a ${(msg as { type?: string }).type ?? "unknown"} message]`;
+        messages.push({ ...msgBase, text: fallbackText, mediaType: "text" });
       }
     }
   }
@@ -268,9 +318,10 @@ export function extractAllWebhookEvents(body: string): {
 /**
  * Verify webhook signature via HMAC-SHA256.
  * Header: x-hub-signature-256 = "sha256=<hex>"
+ * Uses raw request body bytes to avoid encoding mismatches.
  */
 export async function verifyWhatsAppSignature(
-  payload: string,
+  payload: ArrayBuffer | string,
   signature: string,
   secret?: string
 ): Promise<boolean> {
@@ -278,11 +329,18 @@ export async function verifyWhatsAppSignature(
   const appSecret = secret ?? process.env.WHATSAPP_APP_SECRET;
   if (!appSecret) return false;
   const expected = signature;
-  const actual = "sha256=" + (await hmacSha256Hex(appSecret, payload));
+  const data: BufferSource =
+    typeof payload === "string"
+      ? new TextEncoder().encode(payload)
+      : payload;
+  const actual = "sha256=" + (await hmacSha256Hex(appSecret, data));
   return actual === expected;
 }
 
-async function hmacSha256Hex(secret: string, data: string): Promise<string> {
+async function hmacSha256Hex(
+  secret: string,
+  data: BufferSource
+): Promise<string> {
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey(
     "raw",
@@ -291,11 +349,7 @@ async function hmacSha256Hex(secret: string, data: string): Promise<string> {
     false,
     ["sign"]
   );
-  const sig = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    enc.encode(data)
-  );
+  const sig = await crypto.subtle.sign("HMAC", key, data);
   return Array.from(new Uint8Array(sig))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -595,4 +649,28 @@ export async function sendWhatsAppTemplate(
     success: true,
     messageId: data.messages?.[0]?.id,
   };
+}
+
+export async function getWhatsAppMediaDownloadUrl(
+  mediaId: string,
+): Promise<{ success: boolean; url?: string; mimeType?: string; error?: string }> {
+  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+  if (!token) return { success: false, error: "WHATSAPP_ACCESS_TOKEN not set" };
+  const url = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${mediaId}`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    url?: string;
+    mime_type?: string;
+    error?: { message?: string };
+  };
+  if (!res.ok || !data.url) {
+    return {
+      success: false,
+      error: data.error?.message ?? `HTTP ${res.status}`,
+    };
+  }
+  return { success: true, url: data.url, mimeType: data.mime_type };
 }

@@ -9,7 +9,6 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { requireAdmin } from "../lib/auth";
-import { buildNotificationTemplate } from "../services/notificationManifest";
 import {
   buildSalesSummaryFields,
   extractTopics,
@@ -25,60 +24,6 @@ import {
 
 type OrderDoc = Doc<"orders">;
 type ConversationReasonDoc = Doc<"conversationReasons">;
-
-function hasArabicChars(value: string | undefined): boolean {
-  return /[\u0600-\u06FF]/.test(value ?? "");
-}
-
-function normalizeArabicSummaryField(
-  value: string | undefined,
-  fallbackArabicPrefix: string,
-): string | undefined {
-  const text = value?.trim();
-  if (!text) return undefined;
-  if (hasArabicChars(text)) return text;
-  return `${fallbackArabicPrefix}: ${text}`;
-}
-
-function normalizeArabicSummaryPayload(fields: {
-  aiHandoffReason?: string;
-  customerNeedsSummary?: string;
-  salesTalkingPoints?: string;
-  recommendationSummary?: string;
-}) {
-  return {
-    aiHandoffReason: normalizeArabicSummaryField(
-      fields.aiHandoffReason,
-      "سبب التحويل",
-    ),
-    customerNeedsSummary: normalizeArabicSummaryField(
-      fields.customerNeedsSummary,
-      "ملخص احتياج العميل",
-    ),
-    salesTalkingPoints: normalizeArabicSummaryField(
-      fields.salesTalkingPoints,
-      "نقاط حديث فريق المبيعات",
-    ),
-    recommendationSummary: normalizeArabicSummaryField(
-      fields.recommendationSummary,
-      "ملخص التوصية",
-    ),
-  };
-}
-
-async function listTeamMemberIds(ctx: QueryCtx | MutationCtx): Promise<Set<string>> {
-  const [adminUsers, adminProfiles] = await Promise.all([
-    ctx.db.query("adminUsers").collect(),
-    ctx.db
-      .query("userProfiles")
-      .filter((q) => q.eq(q.field("role"), "admin"))
-      .collect(),
-  ]);
-  return new Set<string>([
-    ...adminUsers.map((row) => row.userId),
-    ...adminProfiles.map((row) => row.userId),
-  ]);
-}
 
 async function getProfileByUserId(ctx: QueryCtx | MutationCtx, userId: string) {
   return ctx.db
@@ -227,24 +172,20 @@ async function emitOrderSignals(
     });
   }
 
-  const template = buildNotificationTemplate({
-    event: event === "order_created" ? "order_assigned" : "order_status_changed",
-    order,
-    previousStatus: (metadata?.previousStatus as string | undefined) ?? undefined,
-    nextStatus: (metadata?.nextStatus as string | undefined) ?? order.status,
-  });
-
   await ctx.runMutation(internal.services.notifications.createSalesNotification, {
     userId: order.assignedTo ?? "sales-team",
-    title: template.title,
-    body: template.body,
+    title: event === "order_created" ? "New sales order created" : "Order status updated",
+    body:
+      event === "order_created"
+        ? `Order for user ${order.userId} is ready for sales follow-up.`
+        : `Order ${order._id} changed status to ${order.status}.`,
     type: "sales_order",
     linkId: String(order._id),
-    audience: template.audience,
+    audience: "sales",
     entityType: "order",
     entityId: String(order._id),
-    priority: template.priority,
-    actionRequired: template.actionRequired,
+    priority: order.priority ?? "medium",
+    actionRequired: !isClosed(order.status),
     status: "new",
     metadata: {
       orderId: order._id,
@@ -271,17 +212,13 @@ export const listOrders = query({
     status: v.optional(orderStatusValidator),
     type: v.optional(orderTypeValidator),
     assignedTo: v.optional(v.string()),
-    fromMs: v.optional(v.number()),
-    toMs: v.optional(v.number()),
   },
-  handler: async (ctx, { limit = 50, status, type, assignedTo, fromMs, toMs }) => {
+  handler: async (ctx, { limit = 50, status, type, assignedTo }) => {
     await requireAdmin(ctx);
     let orders = await ctx.db.query("orders").order("desc").take(limit);
     if (status) orders = orders.filter((o) => o.status === status);
     if (type) orders = orders.filter((o) => o.type === type);
     if (assignedTo) orders = orders.filter((o) => o.assignedTo === assignedTo);
-    if (fromMs !== undefined) orders = orders.filter((o) => o._creationTime >= fromMs);
-    if (toMs !== undefined) orders = orders.filter((o) => o._creationTime <= toMs);
     return Promise.all(orders.map((o) => enrichOrder(ctx, o)));
   },
 });
@@ -292,8 +229,6 @@ export const ordersList = query({
     status: v.optional(orderStatusValidator),
     type: v.optional(orderTypeValidator),
     assignedTo: v.optional(v.string()),
-    fromMs: v.optional(v.number()),
-    toMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
@@ -318,10 +253,6 @@ export const ordersList = query({
     if (args.status) page = page.filter((o) => o.status === args.status);
     if (args.type) page = page.filter((o) => o.type === args.type);
     if (args.assignedTo) page = page.filter((o) => o.assignedTo === args.assignedTo);
-    if (args.fromMs !== undefined)
-      page = page.filter((o) => o._creationTime >= args.fromMs!);
-    if (args.toMs !== undefined)
-      page = page.filter((o) => o._creationTime <= args.toMs!);
     return {
       ...result,
       page: await Promise.all(page.map((o) => enrichOrder(ctx, o))),
@@ -397,15 +328,10 @@ export const getOrder = query({
 });
 
 export const pipelineSummary = query({
-  args: {
-    fromMs: v.optional(v.number()),
-    toMs: v.optional(v.number()),
-  },
-  handler: async (ctx, { fromMs, toMs }) => {
+  args: {},
+  handler: async (ctx) => {
     await requireAdmin(ctx);
-    let orders = await ctx.db.query("orders").collect();
-    if (fromMs !== undefined) orders = orders.filter((o) => o._creationTime >= fromMs);
-    if (toMs !== undefined) orders = orders.filter((o) => o._creationTime <= toMs);
+    const orders = await ctx.db.query("orders").collect();
     const stageCounts = {
       new_lead: 0,
       contacted: 0,
@@ -437,16 +363,10 @@ export const pipelineSummary = query({
 });
 
 export const pipelineBoard = query({
-  args: {
-    limitPerStage: v.optional(v.number()),
-    fromMs: v.optional(v.number()),
-    toMs: v.optional(v.number()),
-  },
-  handler: async (ctx, { limitPerStage = 30, fromMs, toMs }) => {
+  args: { limitPerStage: v.optional(v.number()) },
+  handler: async (ctx, { limitPerStage = 30 }) => {
     await requireAdmin(ctx);
-    let orders = await ctx.db.query("orders").order("desc").take(500);
-    if (fromMs !== undefined) orders = orders.filter((o) => o._creationTime >= fromMs);
-    if (toMs !== undefined) orders = orders.filter((o) => o._creationTime <= toMs);
+    const orders = await ctx.db.query("orders").order("desc").take(500);
     const enriched = await Promise.all(orders.map((o) => enrichOrder(ctx, o)));
     const statuses: OrderDoc["status"][] = [
       "new_lead",
@@ -490,8 +410,6 @@ export const orderCreate = mutation({
     recommendedPropertyIds: v.optional(v.array(v.id("properties"))),
     recommendedBankProductIds: v.optional(v.array(v.id("bankProducts"))),
     assignedTo: v.optional(v.string()),
-    mentionedUserIds: v.optional(v.array(v.string())),
-    mentionNote: v.optional(v.string()),
     priority: v.optional(orderPriorityValidator),
     nextAction: v.optional(v.string()),
     nextActionAt: v.optional(v.number()),
@@ -500,20 +418,14 @@ export const orderCreate = mutation({
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
-    const normalizedSummary = normalizeArabicSummaryPayload({
-      aiHandoffReason: args.aiHandoffReason,
-      customerNeedsSummary: args.customerNeedsSummary,
-      salesTalkingPoints: args.salesTalkingPoints,
-      recommendationSummary: args.recommendationSummary,
-    });
     const summary = buildSalesSummaryFields({
       intent: args.intent,
       type: args.type,
       serviceCategory: args.serviceCategory,
-      aiHandoffReason: normalizedSummary.aiHandoffReason,
-      customerNeedsSummary: normalizedSummary.customerNeedsSummary,
-      salesTalkingPoints: normalizedSummary.salesTalkingPoints,
-      recommendationSummary: normalizedSummary.recommendationSummary,
+      aiHandoffReason: args.aiHandoffReason,
+      customerNeedsSummary: args.customerNeedsSummary,
+      salesTalkingPoints: args.salesTalkingPoints,
+      recommendationSummary: args.recommendationSummary,
     });
     const orderId = await ctx.db.insert("orders", {
       userId: args.userId,
@@ -540,8 +452,6 @@ export const orderCreate = mutation({
       recommendedPropertyIds: args.recommendedPropertyIds,
       recommendedBankProductIds: args.recommendedBankProductIds,
       assignedTo: args.assignedTo,
-      mentionedUserIds: args.mentionedUserIds,
-      mentionNote: args.mentionNote,
       priority: args.priority ?? "medium",
       nextAction: args.nextAction,
       nextActionAt: args.nextActionAt,
@@ -581,8 +491,6 @@ export const orderUpdate = mutation({
     partnerId: v.optional(v.id("partners")),
     bankProductId: v.optional(v.id("bankProducts")),
     assignedTo: v.optional(v.string()),
-    mentionedUserIds: v.optional(v.array(v.string())),
-    mentionNote: v.optional(v.string()),
     priority: v.optional(orderPriorityValidator),
     nextAction: v.optional(v.string()),
     nextActionAt: v.optional(v.number()),
@@ -598,25 +506,11 @@ export const orderUpdate = mutation({
     const { id, ...updates } = args;
     const doc = await ctx.db.get(id);
     if (!doc) throw new Error("Order not found");
-    const teamMemberIds = await listTeamMemberIds(ctx);
-    const mentionTargets = Array.from(
-      new Set((updates.mentionedUserIds ?? []).filter(Boolean)),
-    );
-    if (mentionTargets.length > 0) {
-      const invalidMention = mentionTargets.find((userId) => !teamMemberIds.has(userId));
-      if (invalidMention) throw new Error("Mentioned user must be in team members");
-    }
     if (updates.status && updates.status !== doc.status) {
       if (!isValidStatusTransition(doc.status, updates.status)) {
         throw new Error(`Invalid status transition from ${doc.status} to ${updates.status}`);
       }
     }
-    const normalizedSummary = normalizeArabicSummaryPayload({
-      aiHandoffReason: updates.aiHandoffReason,
-      customerNeedsSummary: updates.customerNeedsSummary,
-      salesTalkingPoints: updates.salesTalkingPoints,
-      recommendationSummary: updates.recommendationSummary,
-    });
     const patch: Record<string, unknown> = {};
     if (updates.status !== undefined) patch.status = updates.status;
     if (updates.notes !== undefined) patch.notes = updates.notes;
@@ -626,55 +520,19 @@ export const orderUpdate = mutation({
     if (updates.partnerId !== undefined) patch.partnerId = updates.partnerId;
     if (updates.bankProductId !== undefined) patch.bankProductId = updates.bankProductId;
     if (updates.assignedTo !== undefined) patch.assignedTo = updates.assignedTo;
-    if (updates.mentionedUserIds !== undefined) patch.mentionedUserIds = mentionTargets;
-    if (updates.mentionNote !== undefined) patch.mentionNote = updates.mentionNote;
     if (updates.priority !== undefined) patch.priority = updates.priority;
     if (updates.nextAction !== undefined) patch.nextAction = updates.nextAction;
     if (updates.nextActionAt !== undefined) patch.nextActionAt = updates.nextActionAt;
-    if (updates.recommendationSummary !== undefined)
-      patch.recommendationSummary = normalizedSummary.recommendationSummary;
+    if (updates.recommendationSummary !== undefined) patch.recommendationSummary = updates.recommendationSummary;
     if (updates.recommendationSource !== undefined) patch.recommendationSource = updates.recommendationSource;
-    if (updates.aiHandoffReason !== undefined)
-      patch.aiHandoffReason = normalizedSummary.aiHandoffReason;
+    if (updates.aiHandoffReason !== undefined) patch.aiHandoffReason = updates.aiHandoffReason;
     if (updates.customerNeedsSummary !== undefined)
-      patch.customerNeedsSummary = normalizedSummary.customerNeedsSummary;
+      patch.customerNeedsSummary = updates.customerNeedsSummary;
     if (updates.salesTalkingPoints !== undefined)
-      patch.salesTalkingPoints = normalizedSummary.salesTalkingPoints;
+      patch.salesTalkingPoints = updates.salesTalkingPoints;
     if (updates.threadId !== undefined) patch.threadId = updates.threadId;
     if (Object.keys(patch).length > 0) await ctx.db.patch(id, patch);
     const updated = await ctx.db.get(id);
-    if (updated && mentionTargets.length > 0) {
-      const previousMentions = new Set(doc.mentionedUserIds ?? []);
-      const newlyMentioned = mentionTargets.filter((userId) => !previousMentions.has(userId));
-      if (newlyMentioned.length > 0) {
-        await ctx.runMutation(internal.services.notifications.createOrderMentionNotifications, {
-          userIds: newlyMentioned,
-          orderId: updated._id,
-          actorName: "مسؤول المبيعات",
-          mentionNote: updates.mentionNote,
-        });
-      }
-    }
-    if (updated && updates.assignedTo && updates.assignedTo !== doc.assignedTo) {
-      const assignedTemplate = buildNotificationTemplate({
-        event: "order_assigned",
-        order: updated,
-      });
-      await ctx.runMutation(internal.services.notifications.createSalesNotification, {
-        userId: updates.assignedTo,
-        title: assignedTemplate.title,
-        body: assignedTemplate.body,
-        type: "order_assigned",
-        linkId: String(updated._id),
-        audience: assignedTemplate.audience,
-        entityType: "order",
-        entityId: String(updated._id),
-        priority: assignedTemplate.priority,
-        actionRequired: assignedTemplate.actionRequired,
-        status: "new",
-        metadata: { orderId: String(updated._id) },
-      });
-    }
     if (updated && updates.status && updates.status !== doc.status) {
       await emitOrderSignals(ctx, updated, "order_status_changed", {
         previousStatus: doc.status,
@@ -725,20 +583,14 @@ export const createDraftOrderFromAgent = mutation({
     if (args.confidenceScore < 0.55) {
       return { created: false, reason: "confidence_too_low" };
     }
-    const normalizedSummary = normalizeArabicSummaryPayload({
-      aiHandoffReason: args.aiHandoffReason,
-      customerNeedsSummary: args.customerNeedsSummary,
-      salesTalkingPoints: args.salesTalkingPoints,
-      recommendationSummary: args.recommendationSummary,
-    });
     const summary = buildSalesSummaryFields({
       intent: args.intent,
       type: args.type,
       serviceCategory: args.serviceCategory,
-      aiHandoffReason: normalizedSummary.aiHandoffReason,
-      customerNeedsSummary: normalizedSummary.customerNeedsSummary,
-      salesTalkingPoints: normalizedSummary.salesTalkingPoints,
-      recommendationSummary: normalizedSummary.recommendationSummary,
+      aiHandoffReason: args.aiHandoffReason,
+      customerNeedsSummary: args.customerNeedsSummary,
+      salesTalkingPoints: args.salesTalkingPoints,
+      recommendationSummary: args.recommendationSummary,
     });
 
     const reasonCategory = inferReasonCategory({

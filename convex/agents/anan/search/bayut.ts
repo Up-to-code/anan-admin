@@ -12,6 +12,8 @@ import { sanitizeWebText } from "../../_lib/sanitize";
 import { cleanWhitespace } from "../../_lib/sanitize";
 import { isLikelyPropertyDetailUrl } from "../../_lib/location";
 import type { PropertyCardCandidate, StagehandState } from "./types";
+import { type GenericActionCtx } from "convex/server";
+import { type DataModel } from "../../../_generated/dataModel";
 
 const BAYUT_BASE = "https://www.bayut.sa";
 
@@ -31,7 +33,52 @@ function queryToSlug(query: string): string {
   return cleaned || "عقارات-الرياض";
 }
 
+function extractFirstHttpUrl(text: string): string | null {
+  const match = text.match(/https?:\/\/[^\s)]+/i);
+  return match?.[0] ?? null;
+}
+
+function parseBayutListingSeed(query: string): {
+  basePath: string;
+  startPage: number;
+} | null {
+  const firstUrl = extractFirstHttpUrl(query);
+  if (!firstUrl) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(firstUrl);
+  } catch {
+    return null;
+  }
+  if (!parsed.hostname.toLowerCase().includes("bayut.sa")) return null;
+
+  const decodedPath = (() => {
+    try {
+      return decodeURIComponent(parsed.pathname);
+    } catch {
+      return parsed.pathname;
+    }
+  })();
+  if (!decodedPath.startsWith("/s/")) return null;
+
+  const pageMatch = decodedPath.match(/\/صفحة-(\d+)\/?$/);
+  const startPage = pageMatch ? Math.max(1, Number(pageMatch[1])) : 1;
+  const basePath = decodedPath.replace(/\/صفحة-\d+\/?$/, "/");
+  return { basePath: basePath.endsWith("/") ? basePath : `${basePath}/`, startPage };
+}
+
 export function buildBayutSearchUrl(query: string, page?: number): string | null {
+  const listingSeed = parseBayutListingSeed(query);
+  if (listingSeed) {
+    const requestedPage = page && page > 0 ? page : 1;
+    const effectivePage = listingSeed.startPage + (requestedPage - 1);
+    const base = `${BAYUT_BASE}${listingSeed.basePath}`;
+    if (effectivePage > 1) {
+      return `${base}صفحة-${effectivePage}/`;
+    }
+    return base;
+  }
+
   if (!isSaudiPropertyQuery(query)) return null;
 
   const slug = queryToSlug(query);
@@ -69,7 +116,7 @@ function classifyStagehandError(error: unknown): string {
 }
 
 export async function extractBayutListingCards(
-  ctx: unknown,
+  ctx: GenericActionCtx<DataModel>,
   listingUrl: string,
   maxCards: number,
   state: StagehandState
@@ -92,12 +139,13 @@ export async function extractBayutListingCards(
   try {
     const stagehand = new Stagehand(components.stagehand, config);
 
-    const extracted = await stagehand.extract(ctx as any, {
+    const extracted = await stagehand.extract(ctx, {
       url: listingUrl,
       instruction:
         `Extract all property listing cards from this Bayut search results page (up to ${maxCards}). ` +
         "Each card links to a detail page (URL like bayut.sa/العقار/تفاصيل-*.html). " +
-        "Return full absolute URLs for each card. For each card, return title, url, snippet, and imageUrl if available.",
+        "Return full absolute URLs for each card. For each card, extract title, url, snippet, imageUrl, price, beds, baths, area, and location. " +
+        "Look for aria-labels like 'Price', 'Beds', 'Baths', 'Area' and 'Property location' since CSS classes are heavily obfuscated.",
       schema: z.object({
         cards: z
           .array(
@@ -106,6 +154,11 @@ export async function extractBayutListingCards(
               url: z.string().optional(),
               snippet: z.string().optional(),
               imageUrl: z.string().optional(),
+              price: z.string().optional(),
+              beds: z.string().optional(),
+              baths: z.string().optional(),
+              area: z.string().optional(),
+              location: z.string().optional(),
             })
           )
           .optional(),

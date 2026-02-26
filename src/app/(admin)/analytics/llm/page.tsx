@@ -45,7 +45,9 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
+  FileBarChart,
 } from "lucide-react";
+import Link from "next/link";
 import { ar } from "@/lib/ar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -111,10 +113,22 @@ function StatusBadge({ status }: { status: "good" | "warning" | "critical" }) {
 
 export default function LLMAnalyticsPage() {
   const [timeRange, setTimeRange] = React.useState("week");
+  const [auditSince, setAuditSince] = React.useState<"all" | "7d" | "30d">("all");
   const [modelPricing, setModelPricing] = React.useState<OpenRouterModel[]>([]);
   const [pricingLoading, setPricingLoading] = React.useState(true);
 
+  const sinceMs =
+    auditSince === "7d"
+      ? Date.now() - 7 * 24 * 60 * 60 * 1000
+      : auditSince === "30d"
+        ? Date.now() - 30 * 24 * 60 * 60 * 1000
+        : undefined;
+
   const tokenUsage = useQuery(api.features.admin.api.aiTokenUsageStats, {});
+  const tokenBurnAudit = useQuery(api.features.admin.api.tokenBurnAudit, {
+    sinceMs,
+    limitTopUsers: 50,
+  });
   const dashboardStats = useQuery(api.features.admin.api.dashboardStats, {});
   const overviewStats = useQuery(api.features.admin.api.overviewStats, {});
   const aiChartData = useQuery(api.features.admin.api.aiUsageChartData, {
@@ -187,6 +201,31 @@ export default function LLMAnalyticsPage() {
       tokens: m.estimatedTokens || 0,
       requests: m.requests || 0,
     })) || [];
+
+  // Per-model cost using OpenRouter pricing
+  const costPerModelData = React.useMemo(() => {
+    if (!tokenUsage?.modelUsage?.length) return [];
+    return tokenUsage.modelUsage.map((m: any) => {
+      const promptTk = m.promptTokens ?? 0;
+      const completionTk = m.completionTokens ?? 0;
+      const orModel = modelPricing.find((p) => p.id === m.model);
+      let cost = 0;
+      if (orModel?.pricing && (promptTk > 0 || completionTk > 0)) {
+        const promptPrice = parseFloat(orModel.pricing.prompt) || 0;
+        const completionPrice = parseFloat(orModel.pricing.completion) || 0;
+        cost =
+          (promptTk / 1_000_000) * promptPrice +
+          (completionTk / 1_000_000) * completionPrice;
+      } else {
+        cost =
+          promptTk * 0.00000001 + completionTk * 0.00000003;
+      }
+      return {
+        name: m.model?.split("/").pop() || m.model,
+        cost,
+      };
+    });
+  }, [tokenUsage?.modelUsage, modelPricing]);
 
   // Use real chart data from API
   const tokenChartData = React.useMemo(() => {
@@ -340,7 +379,7 @@ export default function LLMAnalyticsPage() {
       </div>
 
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:grid-cols-5">
           <TabsTrigger value="overview" className="gap-2">
             <Activity className="h-4 w-4" />
             <span className="hidden sm:inline">نظرة عامة</span>
@@ -356,6 +395,10 @@ export default function LLMAnalyticsPage() {
           <TabsTrigger value="business" className="gap-2">
             <BarChart3 className="h-4 w-4" />
             <span className="hidden sm:inline">الأعمال</span>
+          </TabsTrigger>
+          <TabsTrigger value="audit" className="gap-2">
+            <FileBarChart className="h-4 w-4" />
+            <span className="hidden sm:inline">مراجعة الحرق</span>
           </TabsTrigger>
         </TabsList>
 
@@ -556,11 +599,37 @@ export default function LLMAnalyticsPage() {
             </Card>
           </div>
 
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">
+                التكلفة ($) لكل نموذج (أسعار OpenRouter)
+              </CardTitle>
+              <CardDescription>
+                تقدير التكلفة باستخدام أسعار OpenRouter لكل مليون رمز
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {costPerModelData.length > 0 ? (
+                <BarChart
+                  data={costPerModelData}
+                  index="name"
+                  categories={["cost"]}
+                  height={280}
+                  valueFormatter={(v) => formatCurrency(v)}
+                />
+              ) : (
+                <div className="h-[280px] flex items-center justify-center text-muted-foreground">
+                  {pricingLoading ? "جاري التحميل..." : "لا توجد بيانات"}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">
-                  توزيع التكاليف حسب النموذج
+                  توزيع الرموز حسب النموذج
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -802,6 +871,143 @@ export default function LLMAnalyticsPage() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="audit" className="space-y-4">
+          <div className="flex items-center gap-4">
+            <Select value={auditSince} onValueChange={(v: any) => setAuditSince(v)}>
+              <SelectTrigger className="w-40">
+                <Clock className="h-4 w-4 ml-2 text-muted-foreground" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">كل البيانات</SelectItem>
+                <SelectItem value="7d">آخر 7 أيام</SelectItem>
+                <SelectItem value="30d">آخر 30 يوم</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {tokenBurnAudit ? (
+            <>
+              <div className="grid gap-4 md:grid-cols-4">
+                <Card>
+                  <CardContent className="pt-6">
+                    <p className="text-sm text-muted-foreground">إجمالي الطلبات</p>
+                    <p className="text-2xl font-bold mt-1">
+                      {formatNumber(tokenBurnAudit.totalRequests)}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <p className="text-sm text-muted-foreground">إجمالي الرموز</p>
+                    <p className="text-2xl font-bold mt-1">
+                      {formatCompactNumber(tokenBurnAudit.totalTokens)}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <p className="text-sm text-muted-foreground">المستخدمين الفريدين</p>
+                    <p className="text-2xl font-bold mt-1">
+                      {formatNumber(tokenBurnAudit.distinctUsers)}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <p className="text-sm text-muted-foreground">طلبات بلا مستخدم</p>
+                    <p className="text-2xl font-bold mt-1">
+                      {formatNumber(tokenBurnAudit.rowsWithoutUserId)}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">الرموز حسب النموذج</CardTitle>
+                    <CardDescription>
+                      توزيع الطلبات والرموز لكل نموذج
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {tokenBurnAudit.byModel.length > 0 ? (
+                      <div className="space-y-3">
+                        {tokenBurnAudit.byModel.map((m: any) => (
+                          <div
+                            key={m.model}
+                            className="flex items-center justify-between p-2 rounded border"
+                          >
+                            <span className="font-mono text-sm truncate max-w-[60%]">
+                              {m.model}
+                            </span>
+                            <div className="text-left text-sm">
+                              <span>{formatNumber(m.requests)} طلب</span>
+                              <span className="mx-2">·</span>
+                              <span>{formatCompactNumber(m.tokens)} رمز</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="h-32 flex items-center justify-center text-muted-foreground">
+                        لا توجد بيانات
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">أكثر المستخدمين استهلاكاً</CardTitle>
+                    <CardDescription>
+                      أعلى 50 مستخدم حسب الرموز المحروقة
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {tokenBurnAudit.topUsersByTokens.length > 0 ? (
+                      <div className="space-y-2 max-h-[320px] overflow-y-auto">
+                        {tokenBurnAudit.topUsersByTokens.map((u: any, i: number) => (
+                          <div
+                            key={u.userId}
+                            className="flex items-center justify-between p-2 rounded border hover:bg-muted/50"
+                          >
+                            <span className="text-sm font-medium truncate max-w-[55%]">
+                              {u.userId === "(no user)" ? (
+                                u.userId
+                              ) : (
+                                <Link
+                                  href={`/users/${u.userId}`}
+                                  className="text-primary hover:underline"
+                                >
+                                  {u.userId}
+                                </Link>
+                              )}
+                            </span>
+                            <div className="text-left text-sm tabular-nums">
+                              {formatNumber(u.requests)} طلب ·{" "}
+                              {formatCompactNumber(u.tokens)} رمز
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="h-32 flex items-center justify-center text-muted-foreground">
+                        لا توجد بيانات
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-center py-12">
+              <Skeleton className="h-48 w-full max-w-md" />
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>

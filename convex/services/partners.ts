@@ -8,6 +8,7 @@ import { v } from "convex/values";
 /** Internal: find partner by API key hash. Used by HTTP action. */
 export const getPartnerByApiKeyHash = internalQuery({
   args: { apiKeyHash: v.string() },
+  returns: v.union(v.id("partners"), v.null()),
   handler: async (ctx, { apiKeyHash }) => {
     const partners = await ctx.db.query("partners").collect();
     const partner = partners.find(
@@ -31,6 +32,7 @@ export const addProperty = mutation({
     description: v.string(),
     body: v.optional(v.any()),
   },
+  returns: v.id("properties"),
   handler: async (ctx, args) => {
     const partner = await ctx.db.get(args.partnerId);
     if (!partner) throw new Error("Partner not found");
@@ -47,6 +49,7 @@ export const addProperty = mutation({
 /** List all partners. */
 export const list = query({
   args: {},
+  returns: v.array(v.any()), // Assuming standard table shape here without creating a deep validator
   handler: async (ctx) => {
     return ctx.db.query("partners").collect();
   },
@@ -58,6 +61,7 @@ export const listPropertiesByPartner = query({
     partnerId: v.id("partners"),
     limit: v.optional(v.number()),
   },
+  returns: v.array(v.any()),
   handler: async (ctx, { partnerId, limit = 50 }) => {
     return ctx.db
       .query("properties")

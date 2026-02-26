@@ -1,5 +1,5 @@
 /**
- * Shared Convex test setup for admin. Provides `modules` for convexTest().
+ * Shared Convex test setup. Provides `modules` for convexTest().
  * Uses import.meta.glob when available (Vitest/Vite); falls back to
  * runtime fs-based glob when not (e.g. Bun's test runner).
  */

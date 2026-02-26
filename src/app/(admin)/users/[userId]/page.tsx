@@ -48,6 +48,7 @@ import {
   Maximize2,
   Minimize2,
   X,
+  MessageCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageHeader, StatCard } from "@/components/admin/ui";
@@ -501,7 +502,7 @@ export default function UserDetailPage() {
   const searchParams = useSearchParams();
   const userId = params.userId as string;
 
-  const [tab, setTab] = React.useState<"overview" | "orders" | "conversation" | "search" | "activity">("overview");
+  const [tab, setTab] = React.useState<"overview" | "orders" | "conversation" | "search" | "activity" | "whatsapp">("overview");
   const [summary, setSummary] = React.useState<string | null>(null);
   const [summaryLoading, setSummaryLoading] = React.useState(false);
   const [activeThreadId, setActiveThreadId] = React.useState<string | null>(null);
@@ -542,6 +543,10 @@ export default function UserDetailPage() {
     api.features.admin.api.conversationsGetThreadTraces,
     activeThreadId ? { threadId: activeThreadId, limit: 20 } : "skip"
   ) as Array<any> | undefined;
+  const whatsappMessages = useQuery(
+    api.features.admin.api.listWhatsAppInboundMessages,
+    userId ? { userId, paginationOpts: { cursor: null, numItems: 50 } } : "skip"
+  ) as { page: Array<{ _id: string; text: string; mediaType?: string; createdAt: number }> } | undefined;
 
   React.useEffect(() => {
     const nextTab = searchParams.get("tab");
@@ -688,6 +693,7 @@ export default function UserDetailPage() {
           <TabsTrigger value="conversation">{ar.conversation}</TabsTrigger>
           <TabsTrigger value="search">البحث</TabsTrigger>
           <TabsTrigger value="activity">{ar.activity}</TabsTrigger>
+          <TabsTrigger value="whatsapp">واتساب</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4 mt-6">
@@ -834,6 +840,44 @@ export default function UserDetailPage() {
               <Card className="col-span-full"><CardContent className="py-16 text-center"><Activity className="h-12 w-12 mx-auto text-muted-foreground mb-4" /><p className="text-muted-foreground">{ar.noActivity}</p></CardContent></Card>
             ) : userFullData.activity.map((a: any) => <ActivityCard key={a._id} activity={a} />)}
           </div>
+        </TabsContent>
+
+        <TabsContent value="whatsapp" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <MessageCircle className="h-4 w-4" />
+                رسائل واتساب الواردة
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">آخر الرسائل المرسلة من المستخدم عبر واتساب</p>
+            </CardHeader>
+            <CardContent>
+              {whatsappMessages === undefined ? (
+                <div className="py-8 text-center"><Skeleton className="h-24 mx-auto max-w-md" /></div>
+              ) : !whatsappMessages.page?.length ? (
+                <div className="py-8 text-center text-muted-foreground">لا توجد رسائل واتساب</div>
+              ) : (
+                <div className="space-y-3">
+                  {whatsappMessages.page.map((msg) => (
+                    <div
+                      key={msg._id}
+                      className="flex gap-3 p-3 rounded-lg border bg-muted/30"
+                    >
+                      <Badge variant="outline" className="shrink-0 text-xs">
+                        {msg.mediaType ?? "text"}
+                      </Badge>
+                      <p className="flex-1 text-sm break-words line-clamp-3" dir="auto">
+                        {msg.text}
+                      </p>
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {new Date(msg.createdAt).toLocaleString("ar-SA")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

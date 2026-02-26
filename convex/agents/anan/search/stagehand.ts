@@ -10,6 +10,8 @@ import { sanitizeWebText } from "../../_lib/sanitize";
 import { isLikelyPropertyDetailUrl } from "../../_lib/location";
 import { TOP_CARDS_PER_SOURCE } from "../../_lib/constants";
 import type { PropertyCardCandidate, StagehandState } from "./types";
+import { type GenericActionCtx } from "convex/server";
+import { type DataModel } from "../../../_generated/dataModel";
 
 function classifyStagehandError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error ?? "");
@@ -22,7 +24,7 @@ function classifyStagehandError(error: unknown): string {
 }
 
 export async function extractCardsFromSource(
-  ctx: unknown,
+  ctx: GenericActionCtx<DataModel>,
   sourceUrl: string,
   sourceRank: number,
   state: StagehandState,
@@ -51,7 +53,7 @@ export async function extractCardsFromSource(
   try {
     const stagehand = new Stagehand(components.stagehand, config);
 
-    const extracted = await stagehand.extract(ctx as any, {
+    const extracted = await stagehand.extract(ctx, {
       url: sourceUrl,
       instruction:
         `Extract up to ${TOP_CARDS_PER_SOURCE} property cards from the page. ` +
@@ -100,7 +102,7 @@ export async function extractCardsFromSource(
 }
 
 export async function extractPropertyDetails(
-  ctx: unknown,
+  ctx: GenericActionCtx<DataModel>,
   cardUrl: string,
   cardRank: number,
   state: StagehandState,
@@ -140,28 +142,29 @@ export async function extractPropertyDetails(
   try {
     const stagehand = new Stagehand(components.stagehand, config);
 
-    const extracted = await stagehand.extract(ctx as any, {
+    const extracted = await stagehand.extract(ctx, {
       url: cardUrl,
       instruction:
         "Extract the full property listing by navigating through the page:\n\n" +
-        "1. FIRST, look for image galleries, carousels, or 'View all photos' buttons. Click them to expand the full gallery.\n" +
-        "2. Extract ALL property images from the expanded gallery (up to 10). Prioritize:\n" +
+        "1. FIRST, check the page source DOM for `<script type=\"application/ld+json\">` containing `@type: RealEstateListing` or `@type: ApartmentComplex`. If present, this JSON-LD block is a goldmine for exact beds, baths, area, price, and geo coordinates.\n\n" +
+        "2. Look for image galleries, carousels, or 'View all photos' buttons. (For PropertyFinder specifically, look for a button ending in `_desktop_button_` to open the gallery). Click them to expand the full gallery.\n" +
+        "3. Extract ALL property images from the expanded gallery (up to 10). Prioritize:\n" +
         "   - Large/high-resolution images over thumbnails\n" +
         "   - Interior photos (living room, bedrooms, kitchen, bathrooms)\n" +
         "   - Exterior photos (building, pool, garden)\n" +
         "   - Amenities photos (gym, parking, lobby)\n" +
         "   - SKIP: logos, avatars, placeholder images, ads\n\n" +
-        "3. Extract property details:\n" +
+        "4. Extract property details (using JSON-LD or aria-labels where available):\n" +
         "   - Title (full property name)\n" +
-        "   - Price (with currency)\n" +
-        "   - Location (neighborhood, city)\n" +
-        "   - Bedrooms/Beds\n" +
-        "   - Bathrooms\n" +
-        "   - Area (in sqm or sqft)\n" +
+        "   - Price (with currency, check aria-label='Price')\n" +
+        "   - Location (neighborhood, city, check aria-label='Property location')\n" +
+        "   - Bedrooms/Beds (check aria-label='Beds')\n" +
+        "   - Bathrooms (check aria-label='Baths')\n" +
+        "   - Area (in sqm or sqft, check aria-label='Area')\n" +
         "   - Key features list (balcony, parking, pool, gym, etc.)\n\n" +
-        "4. Extract Property Information table if available:\n" +
+        "5. Extract Property Information table if available:\n" +
         "   - Type, Purpose, Reference ID, Completion status, Furnishing\n\n" +
-        "5. Extract full description including:\n" +
+        "6. Extract full description including:\n" +
         "   - General specifications\n" +
         "   - Floor breakdown\n" +
         "   - Nearby amenities\n" +
@@ -206,16 +209,16 @@ export async function extractPropertyDetails(
       area: sanitizeWebText(extracted?.area),
       features: Array.isArray(extracted?.features)
         ? extracted.features
-            .map((f) => sanitizeWebText(f))
-            .filter(Boolean)
-            .slice(0, 5)
+          .map((f) => sanitizeWebText(f))
+          .filter(Boolean)
+          .slice(0, 5)
         : undefined,
       imageUrls: Array.isArray(extracted?.imageUrls)
         ? extracted.imageUrls
-            .filter(
-              (url) => url && typeof url === "string" && url.startsWith("http"),
-            )
-            .slice(0, 5)
+          .filter(
+            (url) => url && typeof url === "string" && url.startsWith("http"),
+          )
+          .slice(0, 10)
         : [],
     };
 

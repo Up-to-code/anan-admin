@@ -17,6 +17,8 @@ import {
   Activity,
   Search,
   MessageCircle,
+  Zap,
+  BarChart3,
 } from "lucide-react";
 import { AreaChart, COLORS } from "@/components/ui/charts";
 import { cn } from "@/lib/utils";
@@ -109,6 +111,14 @@ export default function DashboardPage() {
     isAdmin === true
       ? { fromMs: timeFilter.fromMs, toMs: timeFilter.toMs }
       : "skip",
+  );
+  const aiTokenStats = useQuery(
+    api.features.admin.api.aiTokenUsageStats,
+    isAdmin === true ? {} : "skip",
+  );
+  const aiChartData = useQuery(
+    api.features.admin.api.aiUsageChartData,
+    isAdmin === true ? { range: "week" } : "skip",
   );
 
   const loading = stats === undefined;
@@ -208,6 +218,65 @@ export default function DashboardPage() {
           color="amber"
         />
       </div>
+
+      {aiTokenStats && (
+        <Card className="shadow-sm border-border/50 overflow-hidden">
+          <CardContent className="p-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-violet-500/10">
+                  <Zap className="h-5 w-5 text-violet-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">استخدام الذكاء الاصطناعي</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatNumber(aiTokenStats.estimatedTotalTokens)} رمز • ~$
+                    {(
+                      (aiTokenStats.estimatedPromptTokens || 0) * 0.00001 +
+                      (aiTokenStats.estimatedCompletionTokens || 0) * 0.00003
+                    ).toFixed(4)} تقدير
+                  </p>
+                </div>
+              </div>
+              {aiTokenStats.modelUsage?.length ? (
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">
+                    الأعلى:{" "}
+                    {[...aiTokenStats.modelUsage]
+                      .sort((a, b) => (b.estimatedTokens || 0) - (a.estimatedTokens || 0))[0]
+                      ?.model?.split("/")
+                      .pop() || "-"}
+                  </span>
+                </div>
+              ) : null}
+              {aiChartData?.tokensSeries?.length ? (
+                <div className="flex items-center gap-2 h-8 min-w-[100px]">
+                  <div className="flex-1 flex items-end gap-0.5 h-6">
+                    {aiChartData.tokensSeries.map((v, i) => {
+                      const max = Math.max(1, ...aiChartData.tokensSeries);
+                      return (
+                        <div
+                          key={i}
+                          className="flex-1 min-w-[2px] bg-violet-500/40 rounded-sm transition-all"
+                          style={{
+                            height: `${Math.max(4, (v / max) * 100)}%`,
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/analytics/llm" className="gap-1">
+                  التفاصيل <ArrowRight className="h-3 w-3" />
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2 shadow-sm border-border/50">

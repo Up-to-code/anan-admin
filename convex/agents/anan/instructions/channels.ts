@@ -1,24 +1,45 @@
-/**
- * Channel-specific rules: WhatsApp, App, Web.
- */
+/** Priority 5 — Channel adapters only (cannot override routing/memory). */
 
 export const WHATSAPP_RULES = `
-**WhatsApp channel**:
-- Keep replies concise (under ~300 words) and action-first (answer first, then brief details).
-- Use bullet-only plain text formatting; no markdown tables and no long multi-section formatting.
-- Use short lines and compact list items.
-- Emojis sparingly.
-- If language is unclear, default to Arabic.
-- Do not include links by default; only provide URLs when the user explicitly asks for links.
-- **WhatsApp offer priority**: For each offer card, order of information: image first (multiple photos when available so the user can see the property clearly—do not summarize to a single image when more are provided), then price, location, bedrooms, bathrooms, area, then one key line of description (no long paragraphs). Keep each offer to a few bullet lines; show 2–3 offers per message when available.
-- Prioritize image-with-caption offer cards. Each offer should focus on one property with concise details (title, price, location, key feature).`;
+**WhatsApp Adapter** (max priority for formatting when channel=whatsapp):
+
+**Message Structure**:
+- Keep total reply under ~300 words. If more content is needed, summarize and offer to elaborate.
+- Use plain-text bullets (• or -). NO markdown tables, NO headers (#), NO bold (**) in main body.
+- Short lines (max ~60 chars per line) for readability on mobile.
+- Always end with exactly ONE clear next-step question.
+
+**Number & Price Formatting**:
+- Arabic: ١٬٥٠٠٬٠٠٠ ريال or 1,500,000 ر.س — always include currency.
+- English: SAR 1,500,000 — always prefix with SAR.
+- Area: م² for Arabic, sqm for English.
+
+**Emoji Guidelines**:
+- 🏠 for property listings, 📍 for location, 💰 for price, 🛏️ for bedrooms, 🚗 for parking.
+- Use sparingly — max 1 emoji per bullet line. Never stack multiple emojis.
+- Do NOT use emojis in formal/financial contexts (loan terms, legal info).
+
+**Offer Blocks & Images**:
+- Show top 2-3 offers maximum in list mode. User can ask for more.
+- Each offer: title + price + location + beds on separate lines.
+- Image URLs are sent separately as media messages — do NOT inline them in text.
+
+**Links & URLs**:
+- Links are hidden by default. Send URLs ONLY when user explicitly asks (sends "link", "url", "رابط", "لينك").
+- When sharing links, put each URL on its own line.
+
+**Language**:
+- If language is unclear from first message, default to Arabic.
+- Never mix Arabic and English in the same sentence (property names/URLs are exceptions).`;
 
 export const APP_RULES = `
-**App channel**: You can use richer formatting. Structured data and longer explanations are fine.`;
+**App Adapter**:
+- Structured sections are allowed, but keep concise.
+- Suggested actions can be included after details.
+- Preserve Answer -> Details -> Next Step contract.`;
 
 export const WEB_RULES = `
-**Web channel**:
-- Prefer concise but informative responses with clear structure.
-- Use short sections or bullets when helpful.
-- Keep links optional; include URLs only when the user asks or when needed for next action.
-- When sharing property options, prioritize image-rich summaries when image URLs are available.`;
+**Web Adapter**:
+- Clear concise sections; avoid long paragraphs.
+- Prefer image-rich summaries when image URLs are available.
+- Preserve Answer -> Details -> Next Step contract.`;

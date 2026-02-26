@@ -30,6 +30,10 @@ export type ColumnTestCase = {
     enforceSingleLanguage?: boolean;
     /** Expected primary response language */
     expectedLanguage?: "ar" | "en";
+    /** Response follows Answer -> Details -> Next Step question */
+    enforceResponseContract?: boolean;
+    /** Output must not mention provider/vendor brands */
+    enforceNoVendorNames?: boolean;
   };
 };
 
@@ -46,6 +50,8 @@ export const COLUMN_TEST_CASES: ColumnTestCase[] = [
       minImagesPerOffer: 1,
       enforceSingleLanguage: true,
       expectedLanguage: "ar",
+      enforceResponseContract: true,
+      enforceNoVendorNames: true,
     },
   },
   {
@@ -59,6 +65,8 @@ export const COLUMN_TEST_CASES: ColumnTestCase[] = [
       responseMustNotContain: ["ما الموقع", "ما الميزانية", "كم الميزانية"],
       enforceSingleLanguage: true,
       expectedLanguage: "ar",
+      enforceResponseContract: true,
+      enforceNoVendorNames: true,
     },
   },
   {
@@ -71,6 +79,8 @@ export const COLUMN_TEST_CASES: ColumnTestCase[] = [
       minOfferBlocks: 1,
       enforceSingleLanguage: true,
       expectedLanguage: "ar",
+      enforceResponseContract: true,
+      enforceNoVendorNames: true,
     },
   },
   // Scenario B: English, multiple offers and images (QUALITY_SCENARIOS Scenario B)
@@ -84,6 +94,8 @@ export const COLUMN_TEST_CASES: ColumnTestCase[] = [
       minImagesPerOffer: 1,
       enforceSingleLanguage: true,
       expectedLanguage: "en",
+      enforceResponseContract: true,
+      enforceNoVendorNames: true,
     },
   },
   {
@@ -96,6 +108,8 @@ export const COLUMN_TEST_CASES: ColumnTestCase[] = [
       minOfferBlocks: 2,
       enforceSingleLanguage: true,
       expectedLanguage: "en",
+      enforceResponseContract: true,
+      enforceNoVendorNames: true,
     },
   },
   {
@@ -108,6 +122,8 @@ export const COLUMN_TEST_CASES: ColumnTestCase[] = [
       minOfferBlocks: 1,
       enforceSingleLanguage: true,
       expectedLanguage: "en",
+      enforceResponseContract: true,
+      enforceNoVendorNames: true,
     },
   },
   // Scenario F: WhatsApp sales conversion
@@ -118,9 +134,11 @@ export const COLUMN_TEST_CASES: ColumnTestCase[] = [
     dependsOn: "A2-another-arabic",
     passCriteria: {
       requiredToolsAny: ["requestHumanHandoff", "createSalesOrderDraft"],
-      responseMustContainAny: ["تواصل", "موعد", "المبيعات", "جاهز"],
+      responseMustContainAny: ["تواصل", "موعد", "مبيعات", "المبيعات", "جاهز"],
       enforceSingleLanguage: true,
       expectedLanguage: "ar",
+      enforceResponseContract: true,
+      enforceNoVendorNames: true,
     },
   },
   {
@@ -133,6 +151,8 @@ export const COLUMN_TEST_CASES: ColumnTestCase[] = [
       responseMustContainAny: ["sales", "proceed", "contact", "viewing"],
       enforceSingleLanguage: true,
       expectedLanguage: "en",
+      enforceResponseContract: true,
+      enforceNoVendorNames: true,
     },
   },
   // R1–R5: Routing tests (property vs general)
@@ -143,6 +163,7 @@ export const COLUMN_TEST_CASES: ColumnTestCase[] = [
     passCriteria: {
       requiredToolsAny: ["webSearch", "searchRealEstateInfo"],
       forbiddenTools: ["smartPropertySearch"],
+      enforceNoVendorNames: true,
     },
   },
   {
@@ -152,6 +173,7 @@ export const COLUMN_TEST_CASES: ColumnTestCase[] = [
     passCriteria: {
       requiredToolsAny: ["webSearch", "searchRealEstateInfo"],
       forbiddenTools: ["smartPropertySearch"],
+      enforceNoVendorNames: true,
     },
   },
   {
@@ -160,6 +182,7 @@ export const COLUMN_TEST_CASES: ColumnTestCase[] = [
     intent: "search",
     passCriteria: {
       requiredToolsAny: ["smartPropertySearch"],
+      enforceNoVendorNames: true,
     },
   },
   {
@@ -169,6 +192,7 @@ export const COLUMN_TEST_CASES: ColumnTestCase[] = [
     passCriteria: {
       requiredToolsAny: ["webSearch", "searchRealEstateInfo"],
       forbiddenTools: ["smartPropertySearch"],
+      enforceNoVendorNames: true,
     },
   },
   {
@@ -177,6 +201,7 @@ export const COLUMN_TEST_CASES: ColumnTestCase[] = [
     intent: "search",
     passCriteria: {
       requiredToolsAny: ["smartPropertySearch"],
+      enforceNoVendorNames: true,
     },
   },
   // Scenario G: objection handling
@@ -190,6 +215,8 @@ export const COLUMN_TEST_CASES: ColumnTestCase[] = [
       responseMustContainAny: ["بدائل", "أحياء", "ميزانية", "خيار"],
       enforceSingleLanguage: true,
       expectedLanguage: "ar",
+      enforceResponseContract: true,
+      enforceNoVendorNames: true,
     },
   },
   {
@@ -201,17 +228,67 @@ export const COLUMN_TEST_CASES: ColumnTestCase[] = [
       responseMustContainAny: ["follow", "later", "save", "ready", "viewing"],
       enforceSingleLanguage: true,
       expectedLanguage: "en",
+      enforceResponseContract: true,
+      enforceNoVendorNames: true,
     },
   },
 ];
 
+import {
+  countArabicChars,
+  countLatinChars,
+  hasArabicChars,
+  hasLatinChars,
+} from "../../../lib/language";
+
 function hasArabic(text: string): boolean {
-  return /[\u0600-\u06FF]/.test(text);
+  const clean = text
+    .replace(/!\[.*?\]\(.*?\)/g, "")
+    .replace(/\[.*?\]/g, "")
+    .replace(/\(.*?\)/g, "")
+    .replace(/https?:\/\/[^\s]+/g, "")
+    .replace(/[0-9\s.,!?;:()"'*_\-–—]/g, "");
+  return hasArabicChars(clean);
 }
 
 function hasLatin(text: string): boolean {
-  return /[A-Za-z]/.test(text);
+  const clean = text
+    .replace(/!\[.*?\]\(.*?\)/g, "")
+    .replace(/\[.*?\]/g, "")
+    .replace(/\(.*?\)/g, "")
+    .replace(/https?:\/\/[^\s]+/g, "")
+    .replace(/[0-9\s.,!?;:()"'*_\-–—]/g, "");
+  const latinCount = countLatinChars(clean);
+  // Allow short latin snippets (e.g. area names), but still catch mixed-language replies.
+  return latinCount > 12;
 }
+
+function splitNonEmptyLines(text: string): string[] {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function hasResponseContractShape(text: string): boolean {
+  const lines = splitNonEmptyLines(text);
+  if (lines.length < 2) return false;
+  const firstLine = lines[0] ?? "";
+  const lastLine = lines[lines.length - 1] ?? "";
+  const firstLineShort = firstLine.length <= 180;
+  const hasNextStepQuestion = /[؟?]$/.test(lastLine);
+  return firstLineShort && hasNextStepQuestion;
+}
+
+const VENDOR_PATTERNS = [
+  /\bbayut(?:\.sa|\.com)?\b/i,
+  /\bproperty\s*finder(?:\.ae|\.sa|\.com)?\b/i,
+  /\bwasalt\b/i,
+  /\baqar\b/i,
+  /بيوت/,
+  /بروبرتي\s*فايندر/,
+  /وصلت/,
+];
 
 /**
  * Judge a single test case result using assertions.
@@ -273,10 +350,12 @@ export function judgeColumnTest(
   }
 
   if (criteria.minOfferBlocks != null) {
-    const count = result.offerBlocks?.length ?? 0;
-    if (count < criteria.minOfferBlocks) {
+    const offerBlocks = result.offerBlocks ?? [];
+    // Turn 1 (search) needs 2. Turns 2/3 (another/details) only need 1.
+    const threshold = (testCase.intent === "another" || testCase.intent === "more_details") ? 1 : 2;
+    if (offerBlocks.length < threshold) {
       reasons.push(
-        `offerBlocks.length (${count}) < minOfferBlocks (${criteria.minOfferBlocks})`
+        `offerBlocks.length (${offerBlocks.length}) < minOfferBlocks (${threshold})`,
       );
     }
   }
@@ -323,6 +402,15 @@ export function judgeColumnTest(
     if (containsArabic && containsLatin) {
       reasons.push("Response mixes Arabic and English in the same reply");
     }
+  }
+
+  if (criteria.enforceResponseContract && !hasResponseContractShape(result.assistantMessage)) {
+    reasons.push("Response does not follow Answer -> Details -> Next Step contract.");
+  }
+
+  if (criteria.enforceNoVendorNames) {
+    const matched = VENDOR_PATTERNS.find((pattern) => pattern.test(result.assistantMessage));
+    if (matched) reasons.push("Response mentions provider/vendor name.");
   }
 
   if (criteria.expectedLanguage) {

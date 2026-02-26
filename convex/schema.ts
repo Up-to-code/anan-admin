@@ -44,6 +44,8 @@ export default defineSchema({
     .index("partnerId", ["partnerId"])
     .index("bankId", ["bankId"])
     .index("status", ["status"])
+    // Added index to allow fast lookups for backfilling missing search text (eliminating q.filter)
+    .index("searchText", ["searchText"])
     .searchIndex("search_body", { searchField: "description" })
     .searchIndex("search_full", { searchField: "searchText" }),
 
@@ -134,6 +136,49 @@ export default defineSchema({
     .index("status", ["status"])
     .index("threadId_and_status", ["threadId", "status"]),
 
+  /** Pending developer assistant actions requiring user confirmation in chat UI. */
+  developerActions: defineTable({
+    threadId: v.string(),
+    userId: v.string(),
+    actionType: v.union(
+      v.literal("create_listing"),
+      v.literal("update_listing"),
+      v.literal("delete_listing"),
+      v.literal("portfolio_report"),
+      v.literal("extract_insights"),
+      v.literal("deep_plan"),
+      v.literal("other")
+    ),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("confirmed"),
+      v.literal("cancelled"),
+      v.literal("executed"),
+      v.literal("failed")
+    ),
+    title: v.string(),
+    draftPayload: v.any(),
+    editablePayload: v.any(),
+    executionResult: v.optional(v.any()),
+    confirmedAt: v.optional(v.number()),
+    cancelledAt: v.optional(v.number()),
+    executedAt: v.optional(v.number()),
+    failedAt: v.optional(v.number()),
+  })
+    .index("threadId", ["threadId"])
+    .index("threadId_and_status", ["threadId", "status"])
+    .index("userId_and_status", ["userId", "status"]),
+
+  /** Developer ownership links for property management/reporting from chat. */
+  developerPropertyLinks: defineTable({
+    userId: v.string(),
+    propertyId: v.id("properties"),
+    createdAt: v.number(),
+  })
+    .index("userId", ["userId"])
+    .index("propertyId", ["propertyId"])
+    .index("userId_and_propertyId", ["userId", "propertyId"]),
+
   /** Media for entity galleries and pre-confirm pending action uploads. */
   entityMedia: defineTable({
     pendingActionId: v.optional(v.id("adminPendingActions")),
@@ -162,9 +207,9 @@ export default defineSchema({
   /** User profiles with all fields the agent depends on */
   userProfiles: defineTable({
     userId: v.string(),
-    role: v.optional(roleValidator),
     name: v.optional(v.string()),
     phone: v.optional(v.string()),
+    role: v.optional(v.string()),
     email: v.optional(v.string()),
     salary: v.optional(v.number()),
     employment: v.optional(v.string()),
@@ -186,9 +231,12 @@ export default defineSchema({
     planType: v.optional(v.union(v.literal("free"), v.literal("paid"))),
     planExpiresAt: v.optional(v.number()),
     chatLimit: v.optional(v.number()),
+    location: v.optional(v.string()),
+    avatar: v.optional(v.string()),
+    tokensUsed: v.optional(v.number()),
+    tokensLimit: v.optional(v.number()),
   })
     .index("userId", ["userId"])
-    .index("role", ["role"])
     .index("source", ["source"]),
 
   /** Orders / pipeline (property viewings, loan applications, etc.) */
@@ -241,8 +289,6 @@ export default defineSchema({
     recommendedPropertyIds: v.optional(v.array(v.id("properties"))),
     recommendedBankProductIds: v.optional(v.array(v.id("bankProducts"))),
     assignedTo: v.optional(v.string()),
-    mentionedUserIds: v.optional(v.array(v.string())),
-    mentionNote: v.optional(v.string()),
     priority: v.optional(
       v.union(
         v.literal("low"),
@@ -311,12 +357,17 @@ export default defineSchema({
   threadMetadata: defineTable({
     threadId: v.string(),
     userId: v.string(),
+    channel: v.optional(
+      v.union(v.literal("whatsapp"), v.literal("app"), v.literal("web")),
+    ),
     lastActivityAt: v.number(),
     expiresAt: v.optional(v.number()),
     archivedAt: v.optional(v.number()),
   })
     .index("threadId", ["threadId"])
     .index("userId", ["userId"])
+    .index("userId_and_channel", ["userId", "channel"])
+    .index("userId_channel_lastActivityAt", ["userId", "channel", "lastActivityAt"])
     .index("expiresAt", ["expiresAt"])
     .index("archivedAt", ["archivedAt"]),
 
@@ -380,6 +431,88 @@ export default defineSchema({
     .index("userId", ["userId"])
     .index("location", ["location"]),
 
+  /** Global cross-user cache for web property search results. */
+  globalSearchCache: defineTable({
+    cacheKey: v.string(),
+    query: v.string(),
+    normalizedQuery: v.string(),
+    scope: v.optional(v.union(v.literal("saudi"), v.literal("uae"), v.literal("global"))),
+    offset: v.number(),
+    status: v.union(
+      v.literal("completed"),
+      v.literal("partial"),
+      v.literal("failed"),
+    ),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    hitCount: v.optional(v.number()),
+    lastHitAt: v.optional(v.number()),
+    propertyFindings: v.array(
+      v.object({
+        sourceRank: v.number(),
+        sourceUrl: v.string(),
+        sourceTitle: v.optional(v.string()),
+        cardRank: v.number(),
+        propertyUrl: v.optional(v.string()),
+        detailSourceUrl: v.optional(v.string()),
+        detailFetched: v.optional(v.boolean()),
+        title: v.string(),
+        description: v.optional(v.string()),
+        priceHint: v.optional(v.string()),
+        locationHint: v.optional(v.string()),
+        imageUrls: v.array(v.string()),
+        offerDetails: v.optional(v.string()),
+        confidence: v.optional(v.number()),
+        bathrooms: v.optional(v.string()),
+        area: v.optional(v.string()),
+        features: v.optional(v.array(v.string())),
+        beds: v.optional(v.string()),
+      }),
+    ),
+  })
+    .index("cacheKey", ["cacheKey"])
+    .index("expiresAt", ["expiresAt"])
+    .index("normalizedQuery_and_createdAt", ["normalizedQuery", "createdAt"]),
+
+  /** Cached property detail snapshots for detail enrichment reuse. */
+  propertyDetailCache: defineTable({
+    propertyUrlKey: v.string(),
+    propertyUrl: v.string(),
+    sourceHash: v.optional(v.string()),
+    qualityTier: v.optional(v.union(v.literal("hot"), v.literal("warm"), v.literal("cold"))),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    detail: v.object({
+      title: v.optional(v.string()),
+      description: v.optional(v.string()),
+      price: v.optional(v.string()),
+      location: v.optional(v.string()),
+      imageUrls: v.array(v.string()),
+      offerDetails: v.optional(v.string()),
+      bathrooms: v.optional(v.string()),
+      area: v.optional(v.string()),
+      features: v.optional(v.array(v.string())),
+      beds: v.optional(v.string()),
+    }),
+  })
+    .index("propertyUrlKey", ["propertyUrlKey"])
+    .index("expiresAt", ["expiresAt"]),
+
+  /** Tracks which properties were already shown to user for novelty filtering. */
+  userPropertyExposure: defineTable({
+    userId: v.string(),
+    threadId: v.optional(v.string()),
+    queryScope: v.optional(v.union(v.literal("saudi"), v.literal("uae"), v.literal("global"))),
+    queryKey: v.string(),
+    propertyUrlKey: v.string(),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("userId_and_createdAt", ["userId", "createdAt"])
+    .index("userId_and_queryKey_and_createdAt", ["userId", "queryKey", "createdAt"])
+    .index("threadId_and_createdAt", ["threadId", "createdAt"])
+    .index("expiresAt", ["expiresAt"]),
+
   /** Admin-only knowledge research trail for user-initiated web/property searches. */
   knowledgeResearch: defineTable({
     userId: v.string(),
@@ -413,13 +546,13 @@ export default defineSchema({
         sourceTitle: v.optional(v.string()),
         cardRank: v.number(),
         propertyUrl: v.optional(v.string()),
+        detailSourceUrl: v.optional(v.string()),
+        detailFetched: v.optional(v.boolean()),
         title: v.string(),
         description: v.optional(v.string()),
         priceHint: v.optional(v.string()),
         locationHint: v.optional(v.string()),
         imageUrls: v.array(v.string()),
-        detailFetched: v.optional(v.boolean()),
-        detailSourceUrl: v.optional(v.string()),
         offerDetails: v.optional(v.string()),
         confidence: v.optional(v.number()),
         bathrooms: v.optional(v.string()),
@@ -445,12 +578,7 @@ export default defineSchema({
     type: v.optional(v.string()),
     linkId: v.optional(v.string()),
     audience: v.optional(
-      v.union(
-        v.literal("sales"),
-        v.literal("admin"),
-        v.literal("user"),
-        v.literal("system"),
-      ),
+      v.union(v.literal("sales"), v.literal("admin"), v.literal("user")),
     ),
     entityType: v.optional(
       v.union(v.literal("order"), v.literal("handoff"), v.literal("customer")),
@@ -611,6 +739,112 @@ export default defineSchema({
     ),
   }).index("threadId", ["threadId"]),
 
+  /** WhatsApp inbound idempotency guard by provider message/reaction id. */
+  whatsappInboundEvents: defineTable({
+    providerEventId: v.string(),
+    userId: v.optional(v.string()),
+    eventType: v.union(v.literal("message"), v.literal("reaction")),
+    status: v.union(
+      v.literal("processing"),
+      v.literal("done"),
+      v.literal("failed"),
+    ),
+    messageId: v.optional(v.string()),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("providerEventId", ["providerEventId"])
+    .index("status", ["status"]),
+
+  /** WhatsApp outbound delivery logs for diagnostics and policy tuning. */
+  whatsappDeliveryLogs: defineTable({
+    userId: v.string(),
+    threadId: v.optional(v.string()),
+    sourceMessageId: v.optional(v.string()),
+    sendPolicyUsed: v.union(
+      v.literal("normal_search"),
+      v.literal("single_property_detail"),
+      v.literal("general_info"),
+    ),
+    responseMode: v.optional(
+      v.union(
+        v.literal("search_list"),
+        v.literal("single_property_detail"),
+        v.literal("general_info"),
+      ),
+    ),
+    messagesSentPerTurn: v.number(),
+    offersSentPerTurn: v.number(),
+    imagesSentPerTurn: v.number(),
+    retryCount: v.number(),
+    deliveryFailures: v.number(),
+    silentRetryAttempts: v.optional(v.number()),
+    transcriptionStatus: v.optional(
+      v.union(
+        v.literal("not_applicable"),
+        v.literal("success"),
+        v.literal("failed"),
+        v.literal("timeout"),
+      ),
+    ),
+    transcriptionLatencyMs: v.optional(v.number()),
+    voiceConfirmationShown: v.optional(v.boolean()),
+    voiceConfirmed: v.optional(v.boolean()),
+    voiceCorrectionApplied: v.optional(v.boolean()),
+    voiceIntentConfidence: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("userId", ["userId"])
+    .index("threadId", ["threadId"])
+    .index("createdAt", ["createdAt"]),
+
+  /** Pending WhatsApp voice-note confirmations awaiting user approval/correction. */
+  whatsappVoiceConfirmations: defineTable({
+    userId: v.string(),
+    transcriptText: v.string(),
+    intentSummary: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("confirmed"),
+      v.literal("corrected"),
+      v.literal("expired"),
+      v.literal("cancelled"),
+    ),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    confirmedAt: v.optional(v.number()),
+    correctedText: v.optional(v.string()),
+    sourceMessageId: v.optional(v.string()),
+  })
+    .index("userId", ["userId"])
+    .index("status", ["status"])
+    .index("expiresAt", ["expiresAt"]),
+
+  /** WhatsApp inbound messages for admin visibility and debugging. */
+  whatsappInboundMessages: defineTable({
+    userId: v.string(),
+    providerEventId: v.string(),
+    messageId: v.optional(v.string()),
+    text: v.string(),
+    mediaType: v.optional(
+      v.union(
+        v.literal("text"),
+        v.literal("audio"),
+        v.literal("image"),
+        v.literal("video"),
+        v.literal("document"),
+      ),
+    ),
+    mediaId: v.optional(v.string()),
+    phoneNumberId: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("userId", ["userId"])
+    .index("userId_createdAt", ["userId", "createdAt"])
+    .index("createdAt", ["createdAt"])
+    .index("providerEventId", ["providerEventId"]),
+
   // ── Agent Memory tables ──────────────────────────────────────────────
 
   /** Agent memory for cross-session persistence of user preferences, facts, and interactions. */
@@ -652,25 +886,34 @@ export default defineSchema({
   agentMemoryEmbeddings: defineTable({
     memoryId: v.id("agentMemory"),
     embedding: v.array(v.float64()),
-  }),
+  })
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1536, // Assuming OpenAI ada-002
+      filterFields: ["memoryId"],
+    })
+    // Added index to eliminate the table scan on getMemoriesByEmbeddingIds
+    .index("by_memoryId", ["memoryId"]),
 
   /** Entity relationships for knowledge graph traversal. */
   entityRelations: defineTable({
-    fromType: v.string(),
-    fromId: v.string(),
-    relationType: v.string(),
-    toType: v.string(),
-    toId: v.string(),
-    userId: v.optional(v.string()),
-    strength: v.optional(v.number()),
-    metadata: v.optional(v.any()),
+    fromType: v.string(), // e.g. 'property'
+    fromId: v.string(), // e.g. ID string
+    relationType: v.string(), // e.g. 'near', 'similar', 'funded_by'
+    toType: v.string(), // e.g. 'location', 'property', 'bank'
+    toId: v.string(), // e.g. ID string
+    userId: v.optional(v.string()), // Optional, if this is a user-specific relation graph
+    strength: v.optional(v.number()), // 0.0 to 1.0 confidence/weight
+    metadata: v.optional(v.any()), // e.g. { distance_km: 1.2 }
     createdAt: v.number(),
   })
     .index("from", ["fromType", "fromId"])
     .index("to", ["toType", "toId"])
     .index("relationType", ["relationType"])
     .index("userId", ["userId"])
-    .index("from_and_relation", ["fromType", "fromId", "relationType"]),
+    .index("from_and_relation", ["fromType", "fromId", "relationType"])
+    // Add compound index to check duplicates without a table scan filter
+    .index("from_to_relation", ["fromType", "fromId", "toId", "relationType"]),
 
   /** AI Token usage tracking for dashboard analytics */
   aiTokenUsage: defineTable({

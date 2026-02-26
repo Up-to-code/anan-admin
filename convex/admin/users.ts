@@ -11,7 +11,7 @@ import { components } from "../_generated/api";
 import { requireAdmin, getUserRoleByPhone } from "../lib/auth";
 import { authComponent } from "../auth";
 import { normalizePhone } from "../lib/phone";
-import { ROLE_ADMIN, ROLE_USER, roleValidator } from "../roles";
+import { roleValidator } from "../roles";
 
 /** Synthetic profile shape for users who exist in Better Auth but not in userProfiles */
 type SyntheticProfile = {
@@ -115,12 +115,6 @@ async function enrichUsersWithPhoneAndRole(
 > {
   const userIds = users.map((u) => u.userId);
 
-  const profileRoleByUserId = new Map<string, "user" | "admin">(
-    (await ctx.db.query("userProfiles").collect())
-      .filter((p) => userIds.includes(p.userId) && p.role !== undefined)
-      .map((p) => [p.userId, p.role as "user" | "admin"]),
-  );
-
   const allVerifiedPhones = await ctx.db.query("verifiedPhones").collect();
   const verifiedByUserId = new Map<string, string>();
   for (const rec of allVerifiedPhones) {
@@ -150,14 +144,9 @@ async function enrichUsersWithPhoneAndRole(
   );
 
   return users.map((u) => {
-    const profileRole = profileRoleByUserId.get(u.userId);
-    if (profileRole === ROLE_ADMIN) {
-      const phoneNumber = verifiedByUserId.get(u.userId) ?? u.phone ?? null;
-      return { userId: u.userId, phoneNumber, role: ROLE_ADMIN };
-    }
     if (adminUserIds.has(u.userId)) {
       const phoneNumber = verifiedByUserId.get(u.userId) ?? u.phone ?? null;
-      return { userId: u.userId, phoneNumber, role: ROLE_ADMIN };
+      return { userId: u.userId, phoneNumber, role: "admin" as const };
     }
     const phoneNumber = verifiedByUserId.get(u.userId) ?? null;
     const normalizedPhone = phoneNumber
@@ -173,12 +162,8 @@ async function enrichUsersWithPhoneAndRole(
 }
 
 export const listUsers = query({
-  args: {
-    limit: v.optional(v.number()),
-    fromMs: v.optional(v.number()),
-    toMs: v.optional(v.number()),
-  },
-  handler: async (ctx, { limit = 50, fromMs, toMs }) => {
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit = 50 }) => {
     await requireAdmin(ctx);
     const page = await fetchMergedUserList(ctx, limit);
 
@@ -233,13 +218,8 @@ export const listUsers = query({
       if (atA !== atB) return atB - atA;
       return b._creationTime - a._creationTime;
     });
-    const filtered = withActivity.filter((user) => {
-      const ts = user.lastActivityAt ?? user._creationTime;
-      if (fromMs !== undefined && ts < fromMs) return false;
-      if (toMs !== undefined && ts > toMs) return false;
-      return true;
-    });
-    return filtered;
+
+    return withActivity;
   },
 });
 
@@ -301,8 +281,7 @@ export const usersGetByUserId = query({
         .withIndex("userId", (q) => q.eq("userId", userId))
         .first();
       const role =
-        profile.role ??
-        (roleFromPhone === ROLE_ADMIN || legacyAdmin ? ROLE_ADMIN : roleFromPhone);
+        roleFromPhone === "admin" || legacyAdmin ? "admin" : roleFromPhone;
       return {
         ...profile,
         phoneNumber,
@@ -320,10 +299,10 @@ export const usersGetByUserId = query({
     return {
       userId,
       name: (baUser as { name?: string }).name ?? null,
-      phone: phoneNumber ?? (baUser as { phoneNumber?: string }).phoneNumber ?? null,
-      phoneNumber: phoneNumber ?? (baUser as { phoneNumber?: string }).phoneNumber ?? null,
+      phone: (baUser as { phoneNumber?: string }).phoneNumber ?? null,
+      phoneNumber: (baUser as { phoneNumber?: string }).phoneNumber ?? null,
       email: (baUser as { email?: string }).email ?? null,
-      role: legacyAdmin || roleFromPhone === ROLE_ADMIN ? ROLE_ADMIN : ROLE_USER,
+      role: legacyAdmin ? ("admin" as const) : ("user" as const),
       verified: (baUser as { emailVerified?: boolean }).emailVerified ?? false,
       _creationTime:
         (baUser as { createdAt?: number }).createdAt ?? Date.now(),
@@ -364,25 +343,6 @@ export const listTeamMembers = query({
 
     const allProfiles = await ctx.db.query("userProfiles").collect();
     const profileByUserId = new Map(allProfiles.map((p) => [p.userId, p]));
-
-    for (const profile of allProfiles) {
-      if (profile.role !== ROLE_ADMIN || seen.has(profile.userId)) continue;
-      seen.add(profile.userId);
-      const verified = allVerified.find((v) => v.userId === profile.userId);
-      const phone = verified?.phoneNumber
-        ? normalizePhone(verified.phoneNumber)
-        : profile.phone
-          ? normalizePhone(profile.phone)
-          : null;
-      members.push({
-        userId: profile.userId,
-        name: profile.name ?? null,
-        phone,
-        email: profile.email ?? null,
-        role: ROLE_ADMIN,
-        canEditRole: true,
-      });
-    }
 
     for (const phone of adminPhones) {
       const userId = userIdByPhone.get(phone);
@@ -453,45 +413,11 @@ export const setUserRole = mutation({
       .query("userRoles")
       .withIndex("phoneNumber", (q) => q.eq("phoneNumber", normalized))
       .first();
-    let roleDocId: any;
     if (existing) {
       await ctx.db.patch(existing._id, { role });
-      roleDocId = existing._id;
-    } else {
-      roleDocId = await ctx.db.insert("userRoles", { phoneNumber: normalized, role });
+      return existing._id;
     }
-
-    // Keep userProfiles/adminUsers in sync for any users linked to this phone.
-    const verifiedRows = await ctx.db
-      .query("verifiedPhones")
-      .withIndex("phoneNumber", (q) => q.eq("phoneNumber", normalized))
-      .collect();
-
-    for (const row of verifiedRows) {
-      if (!row.userId) continue;
-      const profile = await ctx.db
-        .query("userProfiles")
-        .withIndex("userId", (q) => q.eq("userId", row.userId!))
-        .first();
-      if (profile) {
-        await ctx.db.patch(profile._id, { role });
-      } else {
-        await ctx.db.insert("userProfiles", { userId: row.userId, role });
-      }
-
-      const adminRow = await ctx.db
-        .query("adminUsers")
-        .withIndex("userId", (q) => q.eq("userId", row.userId!))
-        .first();
-      if (role === ROLE_ADMIN && !adminRow) {
-        await ctx.db.insert("adminUsers", { userId: row.userId });
-      }
-      if (role === ROLE_USER && adminRow) {
-        await ctx.db.delete(adminRow._id);
-      }
-    }
-
-    return roleDocId;
+    return await ctx.db.insert("userRoles", { phoneNumber: normalized, role });
   },
 });
 
@@ -502,40 +428,11 @@ export const setUserRoleByUserId = mutation({
   },
   handler: async (ctx, { userId, role }) => {
     await requireAdmin(ctx);
-
-    const profile = await ctx.db
-      .query("userProfiles")
-      .withIndex("userId", (q) => q.eq("userId", userId))
-      .first();
-    if (profile) {
-      await ctx.db.patch(profile._id, { role });
-    } else {
-      await ctx.db.insert("userProfiles", { userId, role });
-    }
-
-    // If the user has a verified phone, sync role in the phone-based role table too.
-    const verified = await ctx.db
-      .query("verifiedPhones")
-      .withIndex("userId", (q) => q.eq("userId", userId))
-      .first();
-    if (verified?.phoneNumber) {
-      const normalized = normalizePhone(verified.phoneNumber);
-      const roleRow = await ctx.db
-        .query("userRoles")
-        .withIndex("phoneNumber", (q) => q.eq("phoneNumber", normalized))
-        .first();
-      if (roleRow) {
-        await ctx.db.patch(roleRow._id, { role });
-      } else {
-        await ctx.db.insert("userRoles", { phoneNumber: normalized, role });
-      }
-    }
-
     const existing = await ctx.db
       .query("adminUsers")
       .withIndex("userId", (q) => q.eq("userId", userId))
       .first();
-    if (role === ROLE_ADMIN) {
+    if (role === "admin") {
       if (existing) return existing._id;
       return await ctx.db.insert("adminUsers", { userId });
     }
@@ -552,31 +449,6 @@ export const notificationsList = query({
     userId: v.optional(v.string()),
     unreadOnly: v.optional(v.boolean()),
     type: v.optional(v.string()),
-    audience: v.optional(
-      v.union(
-        v.literal("sales"),
-        v.literal("admin"),
-        v.literal("user"),
-        v.literal("system"),
-      ),
-    ),
-    priority: v.optional(
-      v.union(
-        v.literal("low"),
-        v.literal("medium"),
-        v.literal("high"),
-        v.literal("urgent"),
-      ),
-    ),
-    status: v.optional(
-      v.union(
-        v.literal("new"),
-        v.literal("acknowledged"),
-        v.literal("resolved"),
-      ),
-    ),
-    fromMs: v.optional(v.number()),
-    toMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
@@ -598,87 +470,8 @@ export const notificationsList = query({
       page: result.page.filter((n) => {
         if (args.unreadOnly && n.read) return false;
         if (args.type && n.type !== args.type) return false;
-        if (args.audience && n.audience !== args.audience) return false;
-        if (args.priority && n.priority !== args.priority) return false;
-        if (args.status && n.status !== args.status) return false;
-        if (args.fromMs !== undefined && n._creationTime < args.fromMs) return false;
-        if (args.toMs !== undefined && n._creationTime > args.toMs) return false;
         return true;
       }),
-    };
-  },
-});
-
-export const userActivitySeries = query({
-  args: {
-    userId: v.string(),
-    fromMs: v.optional(v.number()),
-    toMs: v.optional(v.number()),
-    bucket: v.optional(
-      v.union(v.literal("hour"), v.literal("day"), v.literal("week"), v.literal("month")),
-    ),
-    activityType: v.optional(v.union(v.literal("all"), v.literal("message_sent"), v.literal("search"), v.literal("order_created"), v.literal("login"), v.literal("property_viewed"))),
-  },
-  handler: async (ctx, { userId, fromMs, toMs, bucket, activityType = "all" }) => {
-    await requireAdmin(ctx);
-    const now = Date.now();
-    const start = fromMs ?? now - 7 * 24 * 60 * 60 * 1000;
-    const end = toMs ?? now;
-    const duration = Math.max(60 * 60 * 1000, end - start);
-    const resolvedBucket =
-      bucket ??
-      (duration <= 48 * 60 * 60 * 1000
-        ? "hour"
-        : duration <= 90 * 24 * 60 * 60 * 1000
-          ? "day"
-          : duration <= 365 * 24 * 60 * 60 * 1000
-            ? "week"
-            : "month");
-    const bucketMs =
-      resolvedBucket === "hour"
-        ? 60 * 60 * 1000
-        : resolvedBucket === "day"
-          ? 24 * 60 * 60 * 1000
-          : resolvedBucket === "week"
-            ? 7 * 24 * 60 * 60 * 1000
-            : 30 * 24 * 60 * 60 * 1000;
-    const bucketCount = Math.max(1, Math.min(180, Math.ceil(duration / bucketMs)));
-
-    const [activities, searchLogs, notifications, orders] = await Promise.all([
-      ctx.db.query("userActivity").withIndex("userId", (q) => q.eq("userId", userId)).collect(),
-      ctx.db.query("searchLogs").withIndex("userId", (q) => q.eq("userId", userId)).collect(),
-      ctx.db.query("notifications").withIndex("userId", (q) => q.eq("userId", userId)).collect(),
-      ctx.db.query("orders").withIndex("userId", (q) => q.eq("userId", userId)).collect(),
-    ]);
-
-    const activitySeries = new Array(bucketCount).fill(0);
-    const searchSeries = new Array(bucketCount).fill(0);
-    const notificationSeries = new Array(bucketCount).fill(0);
-    const orderSeries = new Array(bucketCount).fill(0);
-
-    const pushPoint = (ts: number, target: number[]) => {
-      if (ts < start || ts > end) return;
-      const idx = Math.min(Math.floor((ts - start) / bucketMs), bucketCount - 1);
-      if (idx >= 0) target[idx] += 1;
-    };
-
-    for (const row of activities) {
-      if (activityType !== "all" && row.action !== activityType) continue;
-      pushPoint(row._creationTime, activitySeries);
-    }
-    for (const row of searchLogs) pushPoint(row._creationTime, searchSeries);
-    for (const row of notifications) pushPoint(row._creationTime, notificationSeries);
-    for (const row of orders) pushPoint(row._creationTime, orderSeries);
-
-    return {
-      bucket: resolvedBucket,
-      bucketCount,
-      fromMs: start,
-      toMs: end,
-      activitySeries,
-      searchSeries,
-      notificationSeries,
-      orderSeries,
     };
   },
 });
@@ -739,7 +532,7 @@ export const getUserFullData = query({
   handler: async (ctx, { userId }) => {
     await requireAdmin(ctx);
 
-    const profile = await ctx.db
+    let profile = await ctx.db
       .query("userProfiles")
       .withIndex("userId", (q) => q.eq("userId", userId))
       .first();
@@ -752,10 +545,7 @@ export const getUserFullData = query({
         .withIndex("userId", (q) => q.eq("userId", userId))
         .first();
       const phoneNumber = (baUser as { phoneNumber?: string }).phoneNumber ?? null;
-      const roleFromPhone = phoneNumber
-        ? await getUserRoleByPhone(ctx, phoneNumber)
-        : ROLE_USER;
-      const role = legacyAdmin || roleFromPhone === ROLE_ADMIN ? ROLE_ADMIN : ROLE_USER;
+      const role = legacyAdmin ? "admin" : "user";
       const minimalProfile = {
         userId,
         name: (baUser as { name?: string }).name ?? null,
@@ -794,14 +584,9 @@ export const getUserFullData = query({
       .withIndex("userId", (q) => q.eq("userId", userId))
       .first();
     const phoneNumber = verified?.phoneNumber ?? null;
-    const roleFromPhone = phoneNumber
+    const role = phoneNumber
       ? await getUserRoleByPhone(ctx, phoneNumber)
-      : ROLE_USER;
-    const legacyAdmin = await ctx.db
-      .query("adminUsers")
-      .withIndex("userId", (q) => q.eq("userId", userId))
-      .first();
-    const role = profile.role ?? (legacyAdmin || roleFromPhone === ROLE_ADMIN ? ROLE_ADMIN : ROLE_USER);
+      : "user";
 
     const orders = await ctx.db
       .query("orders")
