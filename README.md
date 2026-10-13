@@ -37,3 +37,7 @@ bun run dev
 ```
 
 Runs at http://localhost:3002
+
+## Project links
+
+[Source](https://github.com/Up-to-code/anan-admin) · [Issues](https://github.com/Up-to-code/anan-admin/issues) · [Public project directory](https://github.com/qentrah/.github/blob/main/profile/PROJECTS.md)
